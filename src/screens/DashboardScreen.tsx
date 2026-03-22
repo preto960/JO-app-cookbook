@@ -4,7 +4,6 @@ import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, RefreshControl,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { RADIUS, SPACING } from '../constants/theme';
 
@@ -31,20 +30,12 @@ const MOCK_USERS = [
 ];
 
 export default function DashboardScreen() {
-  const { user } = useAuth();
   const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 1200);
-  };
-
-  const greeting = () => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
   };
 
   return (
@@ -60,24 +51,6 @@ export default function DashboardScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.greeting, { color: colors.textSecondary }]}>{greeting()},</Text>
-          <Text style={[styles.userName, { color: colors.textPrimary }]}>
-            {user?.firstName} 👋
-          </Text>
-        </View>
-        <View style={[
-          styles.avatarCircle,
-          { backgroundColor: colors.primaryDim, borderColor: colors.primary },
-        ]}>
-          <Text style={[styles.avatarInitial, { color: colors.primary }]}>
-            {user?.firstName?.[0]?.toUpperCase() ?? 'U'}
-          </Text>
-        </View>
-      </View>
-
       {/* ── Stats ── */}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Overview</Text>
       <View style={styles.statsGrid}>
@@ -181,58 +154,55 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content:   { padding: SPACING.lg },
 
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  greeting:      { fontSize: 14 },
-  userName:      { fontSize: 24, fontWeight: '800' },
-  avatarCircle:  {
-    width: 44, height: 44, borderRadius: 22,
-    borderWidth: 1.5,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarInitial: { fontWeight: '700', fontSize: 18 },
-
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   sectionTitle: {
-    fontSize: 16, fontWeight: '700',
-    marginBottom: SPACING.md, marginTop: SPACING.sm,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: SPACING.md,
+    marginTop: SPACING.sm,
   },
   seeAll: { fontSize: 13, marginBottom: SPACING.md },
 
   statsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    gap: 12, marginBottom: SPACING.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: SPACING.md,
   },
   statCard: {
-    flex: 1, minWidth: '44%',
-    borderRadius: RADIUS.lg, padding: SPACING.md, borderWidth: 1,
+    flex: 1,
+    minWidth: '44%',
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 1,
   },
   statValue:  { fontSize: 22, fontWeight: '800', marginBottom: 2 },
   statLabel:  { fontSize: 12, marginBottom: 8 },
   deltaBadge: {
     alignSelf: 'flex-start',
     borderRadius: RADIUS.full,
-    paddingHorizontal: 8, paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   deltaText: { fontSize: 11, fontWeight: '600' },
 
   card: {
-    borderRadius: RADIUS.lg, borderWidth: 1,
-    marginBottom: SPACING.md, overflow: 'hidden',
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
   },
   rowBorder: { borderBottomWidth: 1 },
 
   userRow: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: SPACING.md, gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    gap: 12,
   },
   userAvatar: {
     width: 36, height: 36, borderRadius: 18,
@@ -243,16 +213,19 @@ const styles = StyleSheet.create({
   userName2:      { fontSize: 14, fontWeight: '600' },
   userEmail:      { fontSize: 12 },
   userMeta:       { alignItems: 'flex-end', gap: 4 },
-  roleBadge:      {
+  roleBadge: {
     borderRadius: RADIUS.full,
-    paddingHorizontal: 8, paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   roleText:  { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
 
   activityRow: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: SPACING.md, gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    gap: 12,
   },
   activityIcon: {
     width: 36, height: 36, borderRadius: 18,
@@ -263,7 +236,8 @@ const styles = StyleSheet.create({
   activityTime:      { fontSize: 12 },
   activityTypeBadge: {
     borderRadius: RADIUS.full,
-    paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   activityTypeText: { fontSize: 10, fontWeight: '600' },
 });

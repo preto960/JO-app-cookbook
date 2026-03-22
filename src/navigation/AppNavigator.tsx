@@ -23,6 +23,8 @@ import DashboardScreen from '../screens/DashboardScreen';
 import ProfileScreen   from '../screens/ProfileScreen';
 import SettingsScreen  from '../screens/SettingsScreen';
 
+const APP_NAME = 'JO-app-cookbook';
+
 // ─── Tab icon ─────────────────────────────────────────────────────────────────
 function TabIcon({
   name, focused, color, primaryDim,
@@ -141,10 +143,13 @@ function RootNavigator() {
   if (isLoading) {
     return (
       <View style={[styles.splash, { backgroundColor: colors.background }]}>
-        <View style={[styles.splashRing, { backgroundColor: colors.primaryDim, borderColor: colors.primary }]}>
-          <Text style={[styles.splashLogo, { color: colors.primary }]}>M</Text>
+        <View style={[styles.splashRing, {
+          backgroundColor: colors.primaryDim,
+          borderColor: colors.primary,
+        }]}>
+          <Text style={[styles.splashLogo, { color: colors.primary }]}>J</Text>
         </View>
-        <Text style={[styles.splashText, { color: colors.textPrimary }]}>MyApp</Text>
+        <Text style={[styles.splashText, { color: colors.textPrimary }]}>{APP_NAME}</Text>
       </View>
     );
   }
@@ -186,5 +191,5 @@ const styles = StyleSheet.create({
   splash:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   splashRing: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   splashLogo: { fontSize: 32, fontWeight: '800' },
-  splashText: { fontSize: 24, fontWeight: '800' },
+  splashText: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
 });

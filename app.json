@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "JO-app-cookbook",
+    "slug": "myapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0F1E"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.josystems.jo"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "assets/adaptive-icon.png",
+        "backgroundColor": "#0A0F1E"
+      },
+      "package": "com.josystems.jo"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "44d67f98-bde7-4252-87fe-f3f834aa4fe8"
+      }
+    },
+    "owner": "preto960"
+  }
+}

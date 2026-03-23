@@ -1,10 +1,21 @@
 // src/services/api.ts
-import axios, { AxiosError, AxiosRequestConfig } from 'axios';
+// Replaces the existing api.ts with full typed services + token refresh logic
+import axios, { AxiosError, AxiosRequestConfig, AxiosInstance } from 'axios';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import type {
+  LoginPayload, LoginResponse, RefreshResponse,
+  ApiUser, UpdateUserPayload, CreateUserPayload, ChangePasswordPayload, UsersListParams,
+  PaginatedResponse, Permission, UpdatePermissionPayload, Role,
+  Setting, UpdateSettingPayload, TranslationMap, Language,
+  Recipe, RecipesListParams, CreateRecipePayload, UpdateRecipePayload,
+  CreateRatingPayload, RecipeCategory, RecipeTag,
+  CreateCategoryPayload, CreateTagPayload, HealthStatus,
+} from '../types/api.types';
 
 // ─── Keys ─────────────────────────────────────────────────────────────────────
 const TOKEN_KEY         = 'auth_token';
+const REFRESH_TOKEN_KEY = 'auth_refresh_token';
 export const API_URL_KEY     = 'api_base_url';
 export const DEFAULT_API_URL = 'http://localhost:3002/api';
 
@@ -17,7 +28,7 @@ const RETRY_CONFIG = {
 };
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
-const storage = {
+export const storage = {
   getItemAsync: (key: string): Promise<string | null> => {
     if (Platform.OS === 'web') return Promise.resolve(localStorage.getItem(key));
     return SecureStore.getItemAsync(key);
@@ -52,9 +63,13 @@ type DebugBridge = {
 let _debug: DebugBridge | null = null;
 export function registerDebugBridge(bridge: DebugBridge) { _debug = bridge; }
 
+// ─── Auth event bus (for logout on 401 from AuthContext) ──────────────────────
+type AuthEventListener = () => void;
+let _onAuthExpired: AuthEventListener | null = null;
+export function registerAuthExpiredListener(fn: AuthEventListener) { _onAuthExpired = fn; }
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 const getRetryDelay = (attempt: number) =>
   Math.min(RETRY_CONFIG.baseDelay * Math.pow(2, attempt), RETRY_CONFIG.maxDelay);
 
@@ -66,16 +81,38 @@ function shouldRetry(error: AxiosError, attempt: number, skipRetry: boolean): bo
 }
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
-const api = axios.create({
+const api: AxiosInstance = axios.create({
   baseURL: DEFAULT_API_URL,
   timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
 });
 
 getSavedApiUrl().then(url => { api.defaults.baseURL = url; });
+
+// ─── Token refresh state ──────────────────────────────────────────────────────
+let isRefreshing = false;
+let refreshQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (err: unknown) => void;
+}> = [];
+
+function processRefreshQueue(error: unknown, token: string | null) {
+  refreshQueue.forEach(p => error ? p.reject(error) : p.resolve(token!));
+  refreshQueue = [];
+}
+
+async function attemptTokenRefresh(): Promise<string> {
+  const refreshToken = await storage.getItemAsync(REFRESH_TOKEN_KEY);
+  if (!refreshToken) throw new Error('No refresh token available');
+
+  const { data } = await axios.post<RefreshResponse>(
+    `${api.defaults.baseURL}/auth/refresh`,
+    { refreshToken },
+    { timeout: 10000 }
+  );
+  await storage.setItemAsync(TOKEN_KEY, data.accessToken);
+  return data.accessToken;
+}
 
 // ─── Request interceptor ──────────────────────────────────────────────────────
 api.interceptors.request.use(async (config) => {
@@ -91,11 +128,10 @@ api.interceptors.request.use(async (config) => {
   if (_debug && !(config as any)._debugId) {
     const id = _debug.logRequest({
       method: config.method?.toUpperCase() ?? 'GET',
-      url:    (config.baseURL ?? '') + (config.url ?? ''),
+      url: (config.baseURL ?? '') + (config.url ?? ''),
     });
     (config as any)._debugId = id;
   }
-
   return config;
 }, (error) => {
   _debug?.logError(`Request setup error: ${error?.message}`);
@@ -119,29 +155,61 @@ api.interceptors.response.use(
       _startTime:  number;
       _debugId?:   string;
       _skipRetry?: boolean;
+      _isRetry?:   boolean;
     };
 
     if (!config) return Promise.reject(error);
 
+    // ── Token refresh on 401 ─────────────────────────────────────────────────
+    if (error.response?.status === 401 && !config._isRetry) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          refreshQueue.push({
+            resolve: (token) => {
+              config._isRetry = true;
+              config.headers = { ...config.headers, Authorization: `Bearer ${token}` };
+              resolve(api(config));
+            },
+            reject,
+          });
+        });
+      }
+
+      isRefreshing = true;
+      try {
+        const newToken = await attemptTokenRefresh();
+        processRefreshQueue(null, newToken);
+        config._isRetry = true;
+        config.headers = { ...config.headers, Authorization: `Bearer ${newToken}` };
+        if (_debug && config._debugId) {
+          _debug.updateRequest(config._debugId, { error: 'Token refreshed — retrying' });
+        }
+        return api(config);
+      } catch (refreshError) {
+        processRefreshQueue(refreshError, null);
+        await storage.deleteItemAsync(TOKEN_KEY);
+        await storage.deleteItemAsync(REFRESH_TOKEN_KEY);
+        _onAuthExpired?.();
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    // ── Standard retry for 5xx / network errors ───────────────────────────────
     const attempt   = config._retryCount ?? 0;
     const skipRetry = config._skipRetry  ?? false;
 
     if (shouldRetry(error, attempt, skipRetry)) {
       config._retryCount = attempt + 1;
       const waitMs = getRetryDelay(attempt);
-
       if (_debug && config._debugId) {
         _debug.updateRequest(config._debugId, {
           error: `${error.response?.status ?? 'no response'} — retrying (${config._retryCount}/${RETRY_CONFIG.maxRetries})…`,
         });
       }
-
       await delay(waitMs);
       return api(config);
-    }
-
-    if (error.response?.status === 401) {
-      await storage.deleteItemAsync(TOKEN_KEY);
     }
 
     if (_debug) {
@@ -160,53 +228,260 @@ api.interceptors.response.use(
   }
 );
 
-export const storeToken = (token: string) => storage.setItemAsync(TOKEN_KEY, token);
-export const getToken   = ()              => storage.getItemAsync(TOKEN_KEY);
-export const clearToken = ()              => storage.deleteItemAsync(TOKEN_KEY);
+// ─── Token helpers ────────────────────────────────────────────────────────────
+export const storeTokens = async (accessToken: string, refreshToken: string) => {
+  await storage.setItemAsync(TOKEN_KEY, accessToken);
+  await storage.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+};
+export const clearTokens = async () => {
+  await storage.deleteItemAsync(TOKEN_KEY);
+  await storage.deleteItemAsync(REFRESH_TOKEN_KEY);
+};
+export const getToken   = () => storage.getItemAsync(TOKEN_KEY);
+// Keep old export for backward compat
+export const storeToken  = (token: string) => storage.setItemAsync(TOKEN_KEY, token);
+export const clearToken  = () => storage.deleteItemAsync(TOKEN_KEY);
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-export interface LoginPayload { email: string; password: string; }
-
-export interface LoginResponse {
-  message: string; accessToken: string; refreshToken: string;
-  user: {
-    id: string; email: string; firstName: string; lastName: string;
-    role: string; avatar: string | null; isActive: boolean;
-    tenantId: string | null; lastLoginAt: string; createdAt: string; updatedAt: string;
-  };
-}
-
+// ─── Auth service ─────────────────────────────────────────────────────────────
 export const authService = {
   login: async (payload: LoginPayload): Promise<LoginResponse> => {
     const { data } = await api.post<LoginResponse>('/auth/login', payload);
-    await storeToken(data.accessToken);
+    await storeTokens(data.accessToken, data.refreshToken);
     return data;
   },
 
-  // _skipRetry: true — don't retry on session restore, use fallback immediately
-  // Cache-Control header added globally to avoid 304 with empty body
-  getProfile: async () => {
-    const { data } = await api.get('/auth/profile', {
-      _skipRetry: true,
-    } as any);
+  refresh: async (): Promise<RefreshResponse> => {
+    const refreshToken = await storage.getItemAsync(REFRESH_TOKEN_KEY);
+    const { data } = await api.post<RefreshResponse>('/auth/refresh', { refreshToken });
+    await storage.setItemAsync(TOKEN_KEY, data.accessToken);
     return data;
   },
 
-  logout: async () => { await clearToken(); },
+  getProfile: async (): Promise<{ user: ApiUser } | ApiUser> => {
+    const { data } = await api.get('/auth/profile', { _skipRetry: true } as any);
+    return data;
+  },
+
+  updateProfile: async (payload: UpdateUserPayload): Promise<ApiUser> => {
+    const { data } = await api.put<ApiUser>('/auth/profile', payload);
+    return data;
+  },
+
+  logout: async () => { await clearTokens(); },
 };
 
+// ─── User service ─────────────────────────────────────────────────────────────
 export const userService = {
-  getAll:  async (params?: { page?: number; limit?: number }) => {
-    const { data } = await api.get('/users', { params }); return data;
+  getAll: async (params?: UsersListParams): Promise<PaginatedResponse<ApiUser>> => {
+    const { data } = await api.get('/users', { params });
+    return data;
   },
-  getById: async (id: string | number) => {
-    const { data } = await api.get(`/users/${id}`); return data;
+
+  getById: async (id: string): Promise<ApiUser> => {
+    const { data } = await api.get(`/users/${id}`);
+    return data;
+  },
+
+  getRoles: async (): Promise<string[]> => {
+    const { data } = await api.get('/users/roles');
+    return data;
+  },
+
+  create: async (payload: CreateUserPayload): Promise<ApiUser> => {
+    const { data } = await api.post<ApiUser>('/users', payload);
+    return data;
+  },
+
+  update: async (id: string, payload: UpdateUserPayload): Promise<ApiUser> => {
+    const { data } = await api.put<ApiUser>(`/users/${id}`, payload);
+    return data;
+  },
+
+  changePassword: async (id: string, payload: ChangePasswordPayload): Promise<void> => {
+    await api.put(`/users/${id}/password`, payload);
+  },
+
+  toggleStatus: async (id: string): Promise<ApiUser> => {
+    const { data } = await api.patch<ApiUser>(`/users/${id}/toggle-status`);
+    return data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/users/${id}`);
+  },
+
+  bulkDelete: async (ids: string[]): Promise<void> => {
+    await api.post('/users/bulk-delete', { ids });
   },
 };
 
+// ─── Permission service ────────────────────────────────────────────────────────
+export const permissionService = {
+  getAll: async (role?: string): Promise<Permission[]> => {
+    const { data } = await api.get('/permissions', { params: role ? { role } : undefined });
+    return data;
+  },
+
+  update: async (id: string, payload: UpdatePermissionPayload): Promise<Permission> => {
+    const { data } = await api.put<Permission>(`/permissions/${id}`, payload);
+    return data;
+  },
+
+  reset: async (role: string): Promise<void> => {
+    await api.post('/permissions/reset', { role });
+  },
+};
+
+// ─── Role service ──────────────────────────────────────────────────────────────
+export const roleService = {
+  getAll: async (): Promise<Role[]> => {
+    const { data } = await api.get('/roles');
+    return data;
+  },
+};
+
+// ─── Settings service ─────────────────────────────────────────────────────────
+export const settingsService = {
+  getAll: async (): Promise<Setting[]> => {
+    const { data } = await api.get('/settings');
+    return data;
+  },
+
+  getPublic: async (): Promise<Setting[]> => {
+    const { data } = await api.get('/settings/public');
+    return data;
+  },
+
+  update: async (id: string, payload: UpdateSettingPayload): Promise<Setting> => {
+    const { data } = await api.put<Setting>(`/settings/${id}`, payload);
+    return data;
+  },
+
+  updateByKey: async (key: string, value: string): Promise<Setting> => {
+    const { data } = await api.put<Setting>(`/settings/key/${key}`, { value });
+    return data;
+  },
+};
+
+// ─── Translation service ──────────────────────────────────────────────────────
+export const translationService = {
+  getMap: async (language: Language): Promise<TranslationMap> => {
+    const { data } = await api.get('/translations', { params: { language } });
+    return data;
+  },
+};
+
+// ─── Recipe service ───────────────────────────────────────────────────────────
+export const recipeService = {
+  getAll: async (params?: RecipesListParams): Promise<PaginatedResponse<Recipe>> => {
+    const { data } = await api.get('/recipes', { params });
+    return data;
+  },
+
+  getMine: async (params?: RecipesListParams): Promise<PaginatedResponse<Recipe>> => {
+    const { data } = await api.get('/recipes/my', { params });
+    return data;
+  },
+
+  getFavourites: async (params?: PaginationParams): Promise<PaginatedResponse<Recipe>> => {
+    const { data } = await api.get('/recipes/favourites', { params });
+    return data;
+  },
+
+  getById: async (id: string): Promise<Recipe> => {
+    const { data } = await api.get(`/recipes/${id}`);
+    return data;
+  },
+
+  create: async (payload: CreateRecipePayload): Promise<Recipe> => {
+    const { data } = await api.post<Recipe>('/recipes', payload);
+    return data;
+  },
+
+  update: async (id: string, payload: UpdateRecipePayload): Promise<Recipe> => {
+    const { data } = await api.put<Recipe>(`/recipes/${id}`, payload);
+    return data;
+  },
+
+  togglePublish: async (id: string): Promise<Recipe> => {
+    const { data } = await api.patch<Recipe>(`/recipes/${id}/publish`);
+    return data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/recipes/${id}`);
+  },
+
+  // Ratings
+  createRating: async (id: string, payload: CreateRatingPayload): Promise<void> => {
+    await api.post(`/recipes/${id}/ratings`, payload);
+  },
+
+  deleteRating: async (id: string): Promise<void> => {
+    await api.delete(`/recipes/${id}/ratings`);
+  },
+
+  // Favourites
+  toggleFavourite: async (id: string): Promise<{ isFavourited: boolean }> => {
+    const { data } = await api.post(`/recipes/${id}/favourite`);
+    return data;
+  },
+
+  // Categories
+  getCategories: async (): Promise<RecipeCategory[]> => {
+    const { data } = await api.get('/recipes/categories');
+    return data;
+  },
+
+  createCategory: async (payload: CreateCategoryPayload): Promise<RecipeCategory> => {
+    const { data } = await api.post<RecipeCategory>('/recipes/categories', payload);
+    return data;
+  },
+
+  updateCategory: async (id: string, payload: Partial<CreateCategoryPayload>): Promise<RecipeCategory> => {
+    const { data } = await api.put<RecipeCategory>(`/recipes/categories/${id}`, payload);
+    return data;
+  },
+
+  deleteCategory: async (id: string): Promise<void> => {
+    await api.delete(`/recipes/categories/${id}`);
+  },
+
+  // Tags
+  getTags: async (): Promise<RecipeTag[]> => {
+    const { data } = await api.get('/recipes/tags');
+    return data;
+  },
+
+  createTag: async (payload: CreateTagPayload): Promise<RecipeTag> => {
+    const { data } = await api.post<RecipeTag>('/recipes/tags', payload);
+    return data;
+  },
+
+  deleteTag: async (id: string): Promise<void> => {
+    await api.delete(`/recipes/tags/${id}`);
+  },
+};
+
+// ─── Dashboard service ─────────────────────────────────────────────────────────
 export const dashboardService = {
   getStats:    async () => { const { data } = await api.get('/dashboard/stats');    return data; },
   getActivity: async () => { const { data } = await api.get('/dashboard/activity'); return data; },
 };
+
+// ─── Health service ────────────────────────────────────────────────────────────
+export const healthService = {
+  check: async (): Promise<HealthStatus> => {
+    const base = api.defaults.baseURL?.replace('/api', '') ?? '';
+    const { data } = await axios.get<HealthStatus>(`${base}/health`, { timeout: 5000 });
+    return data;
+  },
+};
+
+// ─── Pagination import ──────────────────────────────────────────────────────────
+interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
 
 export default api;

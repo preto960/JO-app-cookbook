@@ -18,10 +18,11 @@ import HeaderAvatar   from '../components/HeaderAvatar';
 import ToastContainer from '../components/ToastContainer';
 import DebugPanel     from '../components/DebugPanel';
 
-import LoginScreen     from '../screens/LoginScreen';
-import DashboardScreen from '../screens/DashboardScreen';
-import ProfileScreen   from '../screens/ProfileScreen';
-import SettingsScreen  from '../screens/SettingsScreen';
+import LoginScreen       from '../screens/LoginScreen';
+import DashboardScreen   from '../screens/DashboardScreen';
+import ProfileScreen     from '../screens/ProfileScreen';
+import SettingsScreen    from '../screens/SettingsScreen';
+import PermissionsScreen from '../screens/permissions/PermissionsScreen';
 
 const APP_NAME = 'JO-app-cookbook';
 
@@ -94,21 +95,50 @@ function MainTabs({ onDebug }: { onDebug: () => void }) {
 
   return (
     <Tab.Navigator screenOptions={screenOptions}>
+      {/* Dashboard — always visible */}
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
         options={{
           title: 'Dashboard',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon name={focused ? 'grid' : 'grid-outline'} focused={focused} color={color} primaryDim={colors.primaryDim} />
+            <TabIcon
+              name={focused ? 'grid' : 'grid-outline'}
+              focused={focused}
+              color={color}
+              primaryDim={colors.primaryDim}
+            />
           ),
         }}
       />
+
+      {/* Profile — hidden tab (navigated to from HeaderAvatar) */}
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{ title: 'Profile', tabBarButton: () => null }}
       />
+
+      {/* Permissions — Super Admin only */}
+      {isSuperAdmin && (
+        <Tab.Screen
+          name="Permissions"
+          component={PermissionsScreen}
+          options={{
+            title: 'Permissions',
+            tabBarIcon: ({ focused, color }) => (
+              <TabIcon
+                name={focused ? 'key' : 'key-outline'}
+                focused={focused}
+                color={color}
+                primaryDim={colors.primaryDim}
+              />
+            ),
+          }}
+        />
+      )}
+
+      {/* Settings — Super Admin only */}
       {isSuperAdmin && (
         <Tab.Screen
           name="Settings"
@@ -116,7 +146,12 @@ function MainTabs({ onDebug }: { onDebug: () => void }) {
           options={{
             title: 'Settings',
             tabBarIcon: ({ focused, color }) => (
-              <TabIcon name={focused ? 'settings' : 'settings-outline'} focused={focused} color={color} primaryDim={colors.primaryDim} />
+              <TabIcon
+                name={focused ? 'settings' : 'settings-outline'}
+                focused={focused}
+                color={color}
+                primaryDim={colors.primaryDim}
+              />
             ),
           }}
         />
@@ -158,7 +193,7 @@ function RootNavigator() {
     <>
       <Stack.Navigator screenOptions={{ headerShown: false, animationEnabled: false }}>
         {user
-          ? <Stack.Screen name="Main"  component={() => <MainTabs onDebug={() => setDebugOpen(true)} />} />
+          ? <Stack.Screen name="Main" component={() => <MainTabs onDebug={() => setDebugOpen(true)} />} />
           : <Stack.Screen name="Login" component={LoginScreen} />
         }
       </Stack.Navigator>

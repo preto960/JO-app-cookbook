@@ -1,11 +1,11 @@
 // src/components/SkeletonLoader.tsx
-// Animated placeholder while content loads.
-// Uses React Native's Animated API — no external dependencies.
-// Cross-platform: web, iOS, Android.
 import React, { useEffect, useRef } from 'react';
 import { Animated, View, StyleSheet, ViewStyle, Platform } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { RADIUS, SPACING } from '../constants/theme';
+
+// useNativeDriver solo en nativo, no en web
+const USE_NATIVE = Platform.OS !== 'web';
 
 interface SkeletonBoxProps {
   width?:  number | string;
@@ -21,8 +21,8 @@ export function SkeletonBox({ width = '100%', height = 16, radius = RADIUS.sm, s
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 1,   duration: 700, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1,   duration: 700, useNativeDriver: USE_NATIVE }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 700, useNativeDriver: USE_NATIVE }),
       ])
     );
     anim.start();
@@ -39,9 +39,6 @@ export function SkeletonBox({ width = '100%', height = 16, radius = RADIUS.sm, s
   );
 }
 
-// ─── Pre-built skeleton patterns ──────────────────────────────────────────────
-
-/** Single list row skeleton */
 export function SkeletonListRow() {
   return (
     <View style={skStyles.row}>
@@ -55,7 +52,6 @@ export function SkeletonListRow() {
   );
 }
 
-/** Card skeleton */
 export function SkeletonCard() {
   const { colors } = useTheme();
   return (
@@ -73,7 +69,6 @@ export function SkeletonCard() {
   );
 }
 
-/** Stats card skeleton */
 export function SkeletonStatCard() {
   const { colors } = useTheme();
   return (
@@ -85,7 +80,6 @@ export function SkeletonStatCard() {
   );
 }
 
-/** List of N rows */
 export function SkeletonList({ count = 5 }: { count?: number }) {
   const { colors } = useTheme();
   return (
@@ -114,12 +108,8 @@ const skStyles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: SPACING.md,
   },
-  cardBody: { padding: SPACING.md },
-  cardFooter: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
+  cardBody:   { padding: SPACING.md },
+  cardFooter: { flexDirection: 'row', gap: 8, marginTop: 12 },
   stat: {
     flex: 1, minWidth: '44%',
     borderRadius: RADIUS.lg, borderWidth: 1,

@@ -1,16 +1,19 @@
 // src/navigation/AppNavigator.tsx
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View, Text, StyleSheet, Platform, TouchableOpacity,
+  Animated, Dimensions, Pressable,
+} from 'react-native';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDebug } from '../context/DebugContext';
-import { RADIUS } from '../constants/theme';
+import { RADIUS, SPACING } from '../constants/theme';
 import { registerDebugBridge } from '../services/api';
 
 import ThemeToggle    from '../components/ThemeToggle';
@@ -18,18 +21,148 @@ import HeaderAvatar   from '../components/HeaderAvatar';
 import ToastContainer from '../components/ToastContainer';
 import DebugPanel     from '../components/DebugPanel';
 
-import LoginScreen       from '../screens/LoginScreen';
-import DashboardScreen   from '../screens/DashboardScreen';
-import ProfileScreen     from '../screens/ProfileScreen';
-import SettingsScreen    from '../screens/SettingsScreen';
-import PermissionsScreen from '../screens/permissions/PermissionsScreen';
+import LoginScreen         from '../screens/LoginScreen';
+import DashboardScreen     from '../screens/DashboardScreen';
+import ProfileScreen       from '../screens/ProfileScreen';
+import SettingsScreen      from '../screens/SettingsScreen';
+import PermissionsScreen   from '../screens/permissions/PermissionsScreen';
+import UsersScreen         from '../screens/users/UsersScreen';
+import UserDetailScreen    from '../screens/users/UserDetailScreen';
+import UserFormScreen      from '../screens/users/UserFormScreen';
+import UserPasswordScreen  from '../screens/users/UserPasswordScreen';
+import RecipesScreen       from '../screens/recipes/RecipesScreen';
+import RecipeDetailScreen  from '../screens/recipes/RecipeDetailScreen';
+import RecipeFormScreen    from '../screens/recipes/RecipeFormScreen';
 
 const APP_NAME = 'JO-app-cookbook';
+const SCREEN_W = Dimensions.get('window').width;
+const DRAWER_W = Math.min(260, SCREEN_W * 0.72);
+
+const Tab   = createBottomTabNavigator();
+const Stack = createStackNavigator();
+
+// ─── Items del menú lateral ───────────────────────────────────────────────────
+const MENU_ITEMS = [
+  { key: 'Recipes',     label: 'Recipes',     icon: 'restaurant-outline' as const, iconOn: 'restaurant'     as const },
+  { key: 'Users',       label: 'Users',       icon: 'people-outline'     as const, iconOn: 'people'         as const, adminOnly: true },
+  { key: 'Settings',    label: 'Settings',    icon: 'settings-outline'   as const, iconOn: 'settings'       as const, adminOnly: true },
+  { key: 'Permissions', label: 'Permissions', icon: 'key-outline'        as const, iconOn: 'key'            as const, adminOnly: true },
+];
+
+// ─── Slide menu ───────────────────────────────────────────────────────────────
+function SlideMenu({
+  visible, onClose, onNavigate, activeKey,
+}: {
+  visible: boolean; onClose: () => void;
+  onNavigate: (screen: string) => void; activeKey: string;
+}) {
+  const { colors }       = useTheme();
+  const { isSuperAdmin } = useAuth();
+  const insets           = useSafeAreaInsets();
+  const tx  = useRef(new Animated.Value(-DRAWER_W)).current;
+  const dim = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.parallel([
+        Animated.spring(tx,  { toValue: 0,         useNativeDriver: Platform.OS !== 'web', tension: 68, friction: 12 }),
+        Animated.timing(dim, { toValue: 1,          duration: 200, useNativeDriver: Platform.OS !== 'web' }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.spring(tx,  { toValue: -DRAWER_W,  useNativeDriver: Platform.OS !== 'web', tension: 68, friction: 12 }),
+        Animated.timing(dim, { toValue: 0,           duration: 180, useNativeDriver: Platform.OS !== 'web' }),
+      ]).start(() => setMounted(false));
+    }
+  }, [visible]);
+
+  if (!mounted) return null;
+
+  const items = MENU_ITEMS.filter(m => !m.adminOnly || isSuperAdmin);
+
+  const panelShadow = Platform.OS === 'web'
+    ? ({ boxShadow: '4px 0 32px rgba(0,0,0,0.28)' } as any)
+    : { shadowColor: '#000', shadowOffset: { width: 6, height: 0 }, shadowOpacity: 0.2, shadowRadius: 16, elevation: 20 };
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <Animated.View
+        pointerEvents={visible ? 'auto' : 'none'}
+        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)', opacity: dim, zIndex: 100 }]}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.drawer,
+          {
+            width: DRAWER_W,
+            backgroundColor: colors.surface,
+            borderRightColor: colors.border,
+            transform: [{ translateX: tx }],
+            zIndex: 101,
+          },
+          panelShadow,
+        ]}
+      >
+        <View style={{
+          paddingTop: insets.top + SPACING.lg,
+          paddingBottom: insets.bottom + SPACING.lg,
+          paddingHorizontal: SPACING.md,
+          flex: 1,
+        }}>
+          {/* Header del menú */}
+          <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
+            <View style={[styles.menuDot, { backgroundColor: colors.primary }]} />
+            <Text style={[styles.menuHeaderText, { color: colors.textPrimary }]}>Navigation</Text>
+          </View>
+
+          <View style={{ marginTop: SPACING.md }}>
+            {items.map(item => {
+              const active = activeKey === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.dItem,
+                    active
+                      ? { backgroundColor: colors.primaryDim, borderColor: `${colors.primary}44` }
+                      : { borderColor: 'transparent' },
+                  ]}
+                  onPress={() => { onClose(); setTimeout(() => onNavigate(item.key), 160); }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.dItemIcon,
+                    { backgroundColor: active ? colors.primary : colors.surfaceElevated },
+                  ]}>
+                    <Ionicons
+                      name={active ? item.iconOn : item.icon}
+                      size={15}
+                      color={active ? colors.background : colors.textSecondary}
+                    />
+                  </View>
+                  <Text style={[styles.dItemText, { color: active ? colors.primary : colors.textPrimary }]}>
+                    {item.label}
+                  </Text>
+                  {active && (
+                    <View style={[styles.dItemBar, { backgroundColor: colors.primary }]} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
 
 // ─── Tab icon ─────────────────────────────────────────────────────────────────
-function TabIcon({
-  name, focused, color, primaryDim,
-}: {
+function TabIcon({ name, focused, color, primaryDim }: {
   name: React.ComponentProps<typeof Ionicons>['name'];
   focused: boolean; color: string; primaryDim: string;
 }) {
@@ -40,50 +173,65 @@ function TabIcon({
   );
 }
 
-// ─── Header right ─────────────────────────────────────────────────────────────
-function HeaderRight({ onDebug }: { onDebug: () => void }) {
+// ─── Header compartido ────────────────────────────────────────────────────────
+function useSharedHeaderOptions(onMenuOpen: () => void, onDebug: () => void) {
+  const { colors }       = useTheme();
   const { isSuperAdmin } = useAuth();
-  const { colors } = useTheme();
 
-  return (
-    <View style={styles.headerRight}>
-      {isSuperAdmin && (
-        <TouchableOpacity
-          onPress={onDebug}
-          activeOpacity={0.7}
-          style={[styles.debugBtn, { backgroundColor: colors.surfaceElevated }]}
-          accessibilityLabel="Open debug panel"
-        >
-          <Ionicons name="bug-outline" size={15} color={colors.textMuted} />
-        </TouchableOpacity>
-      )}
-      <ThemeToggle />
-      <HeaderAvatar />
-    </View>
-  );
-}
-
-const Tab   = createBottomTabNavigator();
-const Stack = createStackNavigator();
-
-// ─── Main tabs ────────────────────────────────────────────────────────────────
-function MainTabs({ onDebug }: { onDebug: () => void }) {
-  const { isSuperAdmin } = useAuth();
-  const { colors } = useTheme();
-
-  const screenOptions = {
+  return {
+    headerTitle: () => null,
     headerStyle: {
       backgroundColor: colors.surface,
+      shadowColor: 'transparent',
       elevation: 0,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
-    headerTitleStyle: { color: colors.textPrimary, fontWeight: '700' as const, fontSize: 18 },
-    headerTintColor:  colors.primary,
-    headerRight: () => <HeaderRight onDebug={onDebug} />,
+    headerTitleStyle: { color: colors.textPrimary },
+    headerTintColor: colors.primary,
+    headerLeft: () => (
+      <TouchableOpacity
+        style={styles.menuBtn}
+        onPress={onMenuOpen}
+        activeOpacity={0.7}
+        accessibilityLabel="Open menu"
+      >
+        <Ionicons name="menu-outline" size={26} color={colors.textPrimary} />
+      </TouchableOpacity>
+    ),
+    headerRight: () => (
+      <View style={styles.headerRight}>
+        {isSuperAdmin && (
+          <TouchableOpacity
+            onPress={onDebug}
+            style={[styles.debugBtn, { backgroundColor: colors.surfaceElevated }]}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="bug-outline" size={15} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+        <ThemeToggle />
+        <HeaderAvatar />
+      </View>
+    ),
+  };
+}
+
+// ─── Main tabs — solo Dashboard ───────────────────────────────────────────────
+function MainTabs({ onMenuOpen, onTabFocus, onDebug }: {
+  onMenuOpen: () => void;
+  onTabFocus: (key: string) => void;
+  onDebug: () => void;
+}) {
+  const { colors }   = useTheme();
+  const headerOpts   = useSharedHeaderOptions(onMenuOpen, onDebug);
+
+  const tabOptions = {
+    ...headerOpts,
     tabBarStyle: {
       backgroundColor: colors.surface,
-      borderTopWidth: 1, borderTopColor: colors.border,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
       height: Platform.OS === 'ios' ? 85 : 65,
       paddingBottom: Platform.OS === 'ios' ? 20 : 8,
       paddingTop: 8,
@@ -94,78 +242,37 @@ function MainTabs({ onDebug }: { onDebug: () => void }) {
   };
 
   return (
-    <Tab.Navigator screenOptions={screenOptions}>
-      {/* Dashboard — always visible */}
+    <Tab.Navigator screenOptions={tabOptions}>
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
+        listeners={{ focus: () => onTabFocus('Dashboard') }}
         options={{
-          title: 'Dashboard',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon
-              name={focused ? 'grid' : 'grid-outline'}
-              focused={focused}
-              color={color}
-              primaryDim={colors.primaryDim}
-            />
+            <TabIcon name={focused ? 'grid' : 'grid-outline'} focused={focused} color={color} primaryDim={colors.primaryDim} />
           ),
         }}
       />
-
-      {/* Profile — hidden tab (navigated to from HeaderAvatar) */}
+      {/* Profile — oculto, se accede desde HeaderAvatar */}
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: 'Profile', tabBarButton: () => null }}
+        listeners={{ focus: () => onTabFocus('Profile') }}
+        options={{ tabBarButton: () => null }}
       />
-
-      {/* Permissions — Super Admin only */}
-      {isSuperAdmin && (
-        <Tab.Screen
-          name="Permissions"
-          component={PermissionsScreen}
-          options={{
-            title: 'Permissions',
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon
-                name={focused ? 'key' : 'key-outline'}
-                focused={focused}
-                color={color}
-                primaryDim={colors.primaryDim}
-              />
-            ),
-          }}
-        />
-      )}
-
-      {/* Settings — Super Admin only */}
-      {isSuperAdmin && (
-        <Tab.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{
-            title: 'Settings',
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon
-                name={focused ? 'settings' : 'settings-outline'}
-                focused={focused}
-                color={color}
-                primaryDim={colors.primaryDim}
-              />
-            ),
-          }}
-        />
-      )}
     </Tab.Navigator>
   );
 }
 
-// ─── Root navigator ───────────────────────────────────────────────────────────
-function RootNavigator() {
-  const { user, isLoading } = useAuth();
-  const { colors }          = useTheme();
-  const debug               = useDebug();
-  const [debugOpen, setDebugOpen] = React.useState(false);
+// ─── Authenticated shell ──────────────────────────────────────────────────────
+function AuthenticatedApp() {
+  const navigation                = useNavigation<any>();
+  const { colors }                = useTheme();
+  const debug                     = useDebug();
+  const { isSuperAdmin }          = useAuth();
+  const [menuOpen,  setMenuOpen]  = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [activeKey, setActiveKey] = useState('Dashboard');
 
   useEffect(() => {
     registerDebugBridge({
@@ -175,32 +282,102 @@ function RootNavigator() {
     });
   }, [debug]);
 
-  if (isLoading) {
-    return (
-      <View style={[styles.splash, { backgroundColor: colors.background }]}>
-        <View style={[styles.splashRing, {
-          backgroundColor: colors.primaryDim,
-          borderColor: colors.primary,
-        }]}>
-          <Text style={[styles.splashLogo, { color: colors.primary }]}>J</Text>
-        </View>
-        <Text style={[styles.splashText, { color: colors.textPrimary }]}>{APP_NAME}</Text>
-      </View>
-    );
-  }
+  const handleNavigate = (screen: string) => {
+    setActiveKey(screen);
+    if (screen === 'Dashboard') {
+      navigation.navigate('Tabs', { screen: 'Dashboard' });
+    } else {
+      navigation.navigate(screen);
+    }
+  };
+
+  const sharedHeader = useSharedHeaderOptions(
+    () => setMenuOpen(true),
+    () => setDebugOpen(true),
+  );
+
+  const stackScreenOptions = {
+    ...sharedHeader,
+    headerShown: true,
+    headerBackTitle: '',
+    cardStyle: { backgroundColor: colors.background },
+    animationEnabled: Platform.OS !== 'web',
+  };
 
   return (
-    <>
-      <Stack.Navigator screenOptions={{ headerShown: false, animationEnabled: false }}>
-        {user
-          ? <Stack.Screen name="Main" component={() => <MainTabs onDebug={() => setDebugOpen(true)} />} />
-          : <Stack.Screen name="Login" component={LoginScreen} />
-        }
+    <View style={{ flex: 1 }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animationEnabled: Platform.OS !== 'web',
+          cardStyle: { backgroundColor: colors.background },
+        }}
+      >
+        <Stack.Screen name="Tabs">
+          {() => (
+            <MainTabs
+              onMenuOpen={() => setMenuOpen(true)}
+              onTabFocus={setActiveKey}
+              onDebug={() => setDebugOpen(true)}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen name="Recipes"     component={RecipesScreen}     options={stackScreenOptions} />
+        <Stack.Screen name="Users"       component={UsersScreen}       options={stackScreenOptions} />
+        <Stack.Screen name="Settings"    component={SettingsScreen}    options={stackScreenOptions} />
+        <Stack.Screen name="Permissions" component={PermissionsScreen} options={stackScreenOptions} />
+
+        <Stack.Screen name="UserDetail"   component={UserDetailScreen}   options={stackScreenOptions} />
+        <Stack.Screen name="UserForm"     component={UserFormScreen}     options={stackScreenOptions} />
+        <Stack.Screen name="UserPassword" component={UserPasswordScreen} options={stackScreenOptions} />
+
+        <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={stackScreenOptions} />
+        <Stack.Screen name="RecipeForm"   component={RecipeFormScreen}   options={stackScreenOptions} />
       </Stack.Navigator>
 
+      <SlideMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={handleNavigate}
+        activeKey={activeKey}
+      />
+
       <ToastContainer />
-      <DebugPanel visible={debugOpen} onClose={() => setDebugOpen(false)} />
-    </>
+
+      {isSuperAdmin && (
+        <DebugPanel visible={debugOpen} onClose={() => setDebugOpen(false)} />
+      )}
+    </View>
+  );
+}
+
+// ─── Splash ───────────────────────────────────────────────────────────────────
+function SplashScreen() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.splash, { backgroundColor: colors.background }]}>
+      <View style={[styles.splashRing, { backgroundColor: colors.primaryDim, borderColor: colors.primary }]}>
+        <Text style={[styles.splashLetter, { color: colors.primary }]}>J</Text>
+      </View>
+      <Text style={[styles.splashTitle, { color: colors.textPrimary }]}>{APP_NAME}</Text>
+    </View>
+  );
+}
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+const RootStack = createStackNavigator();
+
+function RootNavigator() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return <SplashScreen />;
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false, animationEnabled: false }}>
+      {user
+        ? <RootStack.Screen name="App"   component={AuthenticatedApp} />
+        : <RootStack.Screen name="Login" component={LoginScreen}      />
+      }
+    </RootStack.Navigator>
   );
 }
 
@@ -214,17 +391,66 @@ export default function AppNavigator() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  menuBtn: {
+    width: 40, height: 40,
+    alignItems: 'center', justifyContent: 'center',
+    marginLeft: 8,
+  },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   debugBtn: {
     width: 30, height: 30, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: 2,
+    alignItems: 'center', justifyContent: 'center', marginRight: 2,
   },
   tabLabel: { fontSize: 10, fontWeight: '600' },
-  tabIcon:  { width: 36, height: 36, borderRadius: RADIUS.sm + 2, alignItems: 'center', justifyContent: 'center' },
-  splash:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  splashRing: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  splashLogo: { fontSize: 32, fontWeight: '800' },
-  splashText: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  tabIcon: {
+    width: 36, height: 36,
+    borderRadius: RADIUS.sm + 2,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Drawer
+  drawer: {
+    position: 'absolute',
+    top: 0, left: 0, bottom: 0,
+    borderRightWidth: 1,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 1,
+  },
+  menuDot: {
+    width: 6, height: 6, borderRadius: 3,
+  },
+  menuHeaderText: {
+    fontSize: 11, fontWeight: '700',
+    letterSpacing: 1.2, textTransform: 'uppercase',
+  },
+  dItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: RADIUS.md,
+    paddingVertical: 10, paddingHorizontal: SPACING.sm,
+    marginBottom: 2,
+    borderWidth: 1,
+    position: 'relative', overflow: 'hidden',
+  },
+  dItemIcon: {
+    width: 28, height: 28, borderRadius: 7,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  dItemText: { fontSize: 14, fontWeight: '600', flex: 1 },
+  dItemBar: {
+    position: 'absolute', right: 0, top: 8, bottom: 8,
+    width: 3, borderRadius: 2,
+  },
+
+  // Splash
+  splash:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
+  splashRing:   { width: 80, height: 80, borderRadius: 40, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  splashLetter: { fontSize: 32, fontWeight: '800' },
+  splashTitle:  { fontSize: 18, fontWeight: '800' },
 });

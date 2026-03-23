@@ -1,16 +1,13 @@
 // src/screens/users/UserFormScreen.tsx
-// Create or edit a user. userId in route params = edit mode.
-// Cross-platform: web, iOS, Android.
 import React, { useEffect, useState } from 'react';
-import {
-  View, ScrollView, StyleSheet, Switch, Text, TouchableOpacity,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, Switch, Text, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { userService } from '../../services/api';
 import { useApiCall } from '../../hooks/useApiCall';
-import { FormField, ModalSheet, SkeletonList, ThemedCard } from '../../components';
+import { FormField, SkeletonList, ThemedCard } from '../../components';
 import PasswordInput from '../../components/PasswordInput';
+import InlineSelect from '../../components/InlineSelect';
 import { SPACING, RADIUS } from '../../constants/theme';
 
 interface Props {
@@ -21,12 +18,11 @@ interface Props {
 const DEFAULT_ROLES = ['USER', 'ADMIN', 'DEVELOPER'];
 
 export default function UserFormScreen({ navigation, route }: Props) {
-  const userId   = route.params?.userId;
-  const isEdit   = !!userId;
+  const userId = route.params?.userId;
+  const isEdit = !!userId;
   const { colors } = useTheme();
-  const toast    = useToast();
+  const toast = useToast();
 
-  // Form state
   const [email,     setEmail]     = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName,  setLastName]  = useState('');
@@ -35,9 +31,6 @@ export default function UserFormScreen({ navigation, route }: Props) {
   const [isActive,  setIsActive]  = useState(true);
   const [bio,       setBio]       = useState('');
   const [errors,    setErrors]    = useState<Record<string, string>>({});
-  const [roleSheetOpen, setRoleSheetOpen] = useState(false);
-
-  // Available roles
   const [availableRoles, setAvailableRoles] = useState<string[]>(DEFAULT_ROLES);
 
   const { execute: loadUser, loading: loadingUser } = useApiCall(userService.getById, {
@@ -53,7 +46,9 @@ export default function UserFormScreen({ navigation, route }: Props) {
   });
 
   const { execute: loadRoles } = useApiCall(userService.getRoles, {
-    onSuccess: (roles) => setAvailableRoles(roles.length ? roles : DEFAULT_ROLES),
+    onSuccess: (roles) => {
+      if (Array.isArray(roles) && roles.length) setAvailableRoles(roles);
+    },
   });
 
   const { execute: createUser, loading: creating } = useApiCall(userService.create, {
@@ -77,7 +72,7 @@ export default function UserFormScreen({ navigation, route }: Props) {
     if (!email.trim())     e.email     = 'Email is required';
     if (!firstName.trim()) e.firstName = 'First name is required';
     if (!lastName.trim())  e.lastName  = 'Last name is required';
-    if (!isEdit && password.length < 6) e.password = 'Password must be at least 6 characters';
+    if (!isEdit && password.length < 6) e.password = 'Min. 6 characters';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -85,16 +80,30 @@ export default function UserFormScreen({ navigation, route }: Props) {
   const handleSubmit = async () => {
     if (!validate()) return;
     if (isEdit && userId) {
-      await updateUser(userId, { email: email.trim(), firstName: firstName.trim(), lastName: lastName.trim(), role, isActive, bio: bio.trim() || undefined });
+      await updateUser(userId, {
+        email: email.trim(), firstName: firstName.trim(),
+        lastName: lastName.trim(), role, isActive,
+        bio: bio.trim() || undefined,
+      });
     } else {
-      await createUser({ email: email.trim(), password, firstName: firstName.trim(), lastName: lastName.trim(), role, isActive, bio: bio.trim() || undefined });
+      await createUser({
+        email: email.trim(), password,
+        firstName: firstName.trim(), lastName: lastName.trim(),
+        role, isActive, bio: bio.trim() || undefined,
+      });
     }
   };
 
   const saving = creating || updating;
 
+  const roleOptions = availableRoles.map(r => ({ label: r, value: r }));
+
   if (isEdit && loadingUser) {
-    return <View style={[styles.container, { backgroundColor: colors.background }]}><SkeletonList count={6} /></View>;
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <SkeletonList count={6} />
+      </View>
+    );
   }
 
   return (
@@ -102,37 +111,23 @@ export default function UserFormScreen({ navigation, route }: Props) {
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={true}
+      nestedScrollEnabled={true}
     >
+      {/* Basic info */}
       <ThemedCard title="Basic info">
         <FormField
-          label="First name"
-          value={firstName}
-          onChangeText={setFirstName}
-          placeholder="John"
-          error={errors.firstName}
-          required
-          returnKeyType="next"
+          label="First name" value={firstName} onChangeText={setFirstName}
+          placeholder="John" error={errors.firstName} required returnKeyType="next"
         />
         <FormField
-          label="Last name"
-          value={lastName}
-          onChangeText={setLastName}
-          placeholder="Doe"
-          error={errors.lastName}
-          required
-          returnKeyType="next"
+          label="Last name" value={lastName} onChangeText={setLastName}
+          placeholder="Doe" error={errors.lastName} required returnKeyType="next"
         />
         <FormField
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="john@example.com"
-          error={errors.email}
-          required
-          keyboardType="email-address"
-          autoCapitalize="none"
-          returnKeyType="next"
+          label="Email" value={email} onChangeText={setEmail}
+          placeholder="john@example.com" error={errors.email} required
+          keyboardType="email-address" autoCapitalize="none" returnKeyType="next"
         />
       </ThemedCard>
 
@@ -156,17 +151,14 @@ export default function UserFormScreen({ navigation, route }: Props) {
       )}
 
       <ThemedCard title="Role & status">
-        {/* Role selector */}
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>ROLE</Text>
-          <TouchableOpacity
-            style={[styles.selector, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
-            onPress={() => setRoleSheetOpen(true)}
-          >
-            <Text style={[styles.selectorValue, { color: colors.textPrimary }]}>{role}</Text>
-            <Text style={{ color: colors.textMuted }}>›</Text>
-          </TouchableOpacity>
-        </View>
+        {/* InlineSelect en vez de Modal — no abre pantalla en blanco */}
+        <InlineSelect
+          label="Role"
+          options={roleOptions}
+          value={role}
+          onChange={setRole}
+          required
+        />
 
         {/* Active toggle */}
         <View style={[styles.toggleRow, { borderTopColor: colors.border }]}>
@@ -185,16 +177,12 @@ export default function UserFormScreen({ navigation, route }: Props) {
 
       <ThemedCard title="Profile (optional)">
         <FormField
-          label="Bio"
-          value={bio}
-          onChangeText={setBio}
-          placeholder="Short description…"
-          multiline
-          numberOfLines={3}
+          label="Bio" value={bio} onChangeText={setBio}
+          placeholder="Short description…" multiline numberOfLines={3}
         />
       </ThemedCard>
 
-      {/* Save button */}
+      {/* Save */}
       <TouchableOpacity
         style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
         onPress={handleSubmit}
@@ -205,50 +193,23 @@ export default function UserFormScreen({ navigation, route }: Props) {
         </Text>
       </TouchableOpacity>
 
-      <View style={{ height: SPACING.xl }} />
-
-      {/* Role picker sheet */}
-      <ModalSheet
-        visible={roleSheetOpen}
-        onClose={() => setRoleSheetOpen(false)}
-        title="Select role"
-      >
-        {availableRoles.map((r) => (
-          <TouchableOpacity
-            key={r}
-            style={[
-              styles.roleOption,
-              { borderBottomColor: colors.border },
-              r === role && { backgroundColor: colors.primaryDim },
-            ]}
-            onPress={() => { setRole(r); setRoleSheetOpen(false); }}
-          >
-            <Text style={[styles.roleLabel, { color: r === role ? colors.primary : colors.textPrimary }]}>
-              {r}
-            </Text>
-            {r === role && <Text style={{ color: colors.primary }}>✓</Text>}
-          </TouchableOpacity>
-        ))}
-      </ModalSheet>
+      <View style={{ height: SPACING.xl * 2 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content:   { padding: SPACING.lg },
-  fieldLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6 },
-  errorText:  { fontSize: 12, marginTop: 4 },
-  fieldGroup: { marginBottom: SPACING.md },
-  selector: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    height: 48, borderRadius: RADIUS.md, borderWidth: 1,
-    paddingHorizontal: SPACING.md,
+  content:   { padding: SPACING.md },
+  fieldLabel: {
+    fontSize: 12, fontWeight: '600',
+    textTransform: 'uppercase', letterSpacing: 0.7,
+    marginBottom: 6,
   },
-  selectorValue: { fontSize: 15 },
+  errorText:  { fontSize: 12, marginTop: 4 },
   toggleRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: SPACING.md, borderTopWidth: 1, marginTop: 4,
+    paddingTop: SPACING.sm, borderTopWidth: 1, marginTop: 4,
   },
   toggleLabel: { fontSize: 15, fontWeight: '500' },
   toggleSub:   { fontSize: 12, marginTop: 2 },
@@ -258,10 +219,4 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   saveBtnText: { fontSize: 16, fontWeight: '800' },
-  roleOption: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 14, paddingHorizontal: SPACING.md,
-    borderBottomWidth: 1, borderRadius: RADIUS.sm,
-  },
-  roleLabel: { fontSize: 15, fontWeight: '500' },
 });

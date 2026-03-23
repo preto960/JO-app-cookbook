@@ -1,5 +1,5 @@
 // src/components/HeaderAvatar.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
   Pressable, Platform, Image,
@@ -26,13 +26,12 @@ export default function HeaderAvatar() {
 
   const handleLogout = () => {
     setOpen(false);
-    // Small delay so dropdown closes cleanly before logout
     setTimeout(() => logout(), 150);
   };
 
   return (
     <View style={styles.wrapper}>
-      {/* ── Avatar button ── */}
+      {/* Avatar button */}
       <TouchableOpacity
         onPress={() => setOpen(true)}
         activeOpacity={0.8}
@@ -40,13 +39,17 @@ export default function HeaderAvatar() {
         accessibilityLabel="Open user menu"
       >
         {user?.avatar ? (
-          <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
+          <Image
+            source={{ uri: user.avatar }}
+            style={styles.avatarImg}
+            resizeMode="cover"
+          />
         ) : (
           <Text style={[styles.avatarInitial, { color: colors.primary }]}>{initial}</Text>
         )}
       </TouchableOpacity>
 
-      {/* ── Dropdown modal ── */}
+      {/* Dropdown modal */}
       <Modal
         transparent
         animationType="fade"
@@ -54,17 +57,14 @@ export default function HeaderAvatar() {
         onRequestClose={() => setOpen(false)}
         statusBarTranslucent
       >
-        {/* Backdrop — closes on tap outside */}
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
 
-        {/* Menu card — top-right aligned */}
         <View
           style={[
             styles.menu,
             {
               backgroundColor: colors.surface,
               borderColor: colors.border,
-              // web uses boxShadow, native uses shadow*
               ...(Platform.OS === 'web'
                 ? { boxShadow: '0 8px 32px 0 rgba(0,0,0,0.28)' }
                 : {
@@ -77,11 +77,15 @@ export default function HeaderAvatar() {
             },
           ]}
         >
-          {/* User info row */}
+          {/* User info */}
           <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
             <View style={[styles.menuAvatar, { backgroundColor: colors.primaryDim, borderColor: colors.primary }]}>
               {user?.avatar ? (
-                <Image source={{ uri: user.avatar }} style={styles.menuAvatarImg} />
+                <Image
+                  source={{ uri: user.avatar }}
+                  style={styles.menuAvatarImg}
+                  resizeMode="cover"
+                />
               ) : (
                 <Text style={[styles.menuAvatarInitial, { color: colors.primary }]}>{initial}</Text>
               )}
@@ -122,7 +126,7 @@ export default function HeaderAvatar() {
 }
 
 const styles = StyleSheet.create({
-  wrapper:    { marginRight: 12 },
+  wrapper: { marginRight: 12 },
 
   avatarBtn: {
     width: 32, height: 32, borderRadius: 16,
@@ -133,13 +137,11 @@ const styles = StyleSheet.create({
   avatarImg:     { width: 32, height: 32, borderRadius: 16 },
   avatarInitial: { fontSize: 13, fontWeight: '800' },
 
-  // Backdrop covers full screen
   backdrop: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
   },
 
-  // Menu positioned top-right
   menu: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 100 : 60,

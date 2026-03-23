@@ -1,5 +1,4 @@
 // src/services/api.ts
-// Replaces the existing api.ts with full typed services + token refresh logic
 import axios, { AxiosError, AxiosRequestConfig, AxiosInstance } from 'axios';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
@@ -63,7 +62,7 @@ type DebugBridge = {
 let _debug: DebugBridge | null = null;
 export function registerDebugBridge(bridge: DebugBridge) { _debug = bridge; }
 
-// ─── Auth event bus (for logout on 401 from AuthContext) ──────────────────────
+// ─── Auth event bus ───────────────────────────────────────────────────────────
 type AuthEventListener = () => void;
 let _onAuthExpired: AuthEventListener | null = null;
 export function registerAuthExpiredListener(fn: AuthEventListener) { _onAuthExpired = fn; }
@@ -78,6 +77,70 @@ function shouldRetry(error: AxiosError, attempt: number, skipRetry: boolean): bo
   if (attempt >= RETRY_CONFIG.maxRetries) return false;
   if (!error.response) return true;
   return RETRY_CONFIG.retryCodes.includes(error.response.status);
+}
+
+// ─── Normalizadores de respuesta ──────────────────────────────────────────────
+/**
+ * Normaliza cualquier estructura paginada que devuelva el backend.
+ * Soporta:
+ *   - Array directo: [...]
+ *   - { data: [...], total, page, ... }           ← estándar genérico
+ *   - { users: [...], pagination: {...} }          ← backend de este proyecto
+ *   - { recipes: [...], pagination: {...} }        ← backend de este proyecto
+ *   - { [anyKey]: [...], pagination/total: ... }  ← cualquier variante futura
+ */
+function normalizePaginated<T>(raw: any): PaginatedResponse<T> {
+  // Caso 1: ya es array directo
+  if (Array.isArray(raw)) {
+    return { data: raw, total: raw.length, page: 1, limit: raw.length, totalPages: 1 };
+  }
+
+  // Caso 2: ya tiene la forma estándar { data: [...] }
+  if (Array.isArray(raw?.data)) {
+    const pg = raw.pagination ?? {};
+    return {
+      data:       raw.data,
+      total:      raw.total      ?? pg.total      ?? raw.data.length,
+      page:       raw.page       ?? pg.page       ?? 1,
+      limit:      raw.limit      ?? pg.limit      ?? raw.data.length,
+      totalPages: raw.totalPages ?? pg.totalPages ?? 1,
+    };
+  }
+
+  // Caso 3: { [entityKey]: [...], pagination: {...} }
+  // Buscamos la primera key cuyo valor sea un array (es el listado)
+  const pg = raw?.pagination ?? {};
+  const keys = Object.keys(raw ?? {}).filter(k => k !== 'pagination');
+  for (const key of keys) {
+    if (Array.isArray(raw[key])) {
+      const arr = raw[key] as T[];
+      return {
+        data:       arr,
+        total:      pg.total      ?? raw.total      ?? arr.length,
+        page:       pg.page       ?? raw.page       ?? 1,
+        limit:      pg.limit      ?? raw.limit      ?? arr.length,
+        totalPages: pg.totalPages ?? raw.totalPages ?? 1,
+      };
+    }
+  }
+
+  // Fallback: devolvemos vacío para no romper la UI
+  return { data: [], total: 0, page: 1, limit: 20, totalPages: 1 };
+}
+
+/**
+ * Normaliza respuestas que deberían ser un array simple.
+ * Soporta array directo, { data: [...] }, { [key]: [...] }
+ */
+function normalizeArray<T>(raw: any): T[] {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  // Buscar primera key con array
+  const keys = Object.keys(raw ?? {});
+  for (const key of keys) {
+    if (Array.isArray(raw[key])) return raw[key];
+  }
+  return [];
 }
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
@@ -119,9 +182,6 @@ api.interceptors.request.use(async (config) => {
   const token = await storage.getItemAsync(TOKEN_KEY);
   if (token) config.headers.Authorization = `Bearer ${token}`;
 
-  const rateLimiting = (globalThis as any).__rateLimiting !== false;
-  if (rateLimiting) config.headers['X-Rate-Limit-Enabled'] = 'true';
-
   (config as any)._startTime  = Date.now();
   (config as any)._retryCount = (config as any)._retryCount ?? 0;
 
@@ -160,7 +220,7 @@ api.interceptors.response.use(
 
     if (!config) return Promise.reject(error);
 
-    // ── Token refresh on 401 ─────────────────────────────────────────────────
+    // ── Token refresh on 401 ──────────────────────────────────────────────────
     if (error.response?.status === 401 && !config._isRetry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -238,7 +298,6 @@ export const clearTokens = async () => {
   await storage.deleteItemAsync(REFRESH_TOKEN_KEY);
 };
 export const getToken   = () => storage.getItemAsync(TOKEN_KEY);
-// Keep old export for backward compat
 export const storeToken  = (token: string) => storage.setItemAsync(TOKEN_KEY, token);
 export const clearToken  = () => storage.deleteItemAsync(TOKEN_KEY);
 
@@ -271,30 +330,32 @@ export const authService = {
 };
 
 // ─── User service ─────────────────────────────────────────────────────────────
+// Respuesta real del backend: { pagination: {...}, users: [...] }
 export const userService = {
   getAll: async (params?: UsersListParams): Promise<PaginatedResponse<ApiUser>> => {
     const { data } = await api.get('/users', { params });
-    return data;
+    return normalizePaginated<ApiUser>(data);
   },
 
   getById: async (id: string): Promise<ApiUser> => {
     const { data } = await api.get(`/users/${id}`);
-    return data;
+    // Puede venir { user: {...} } o directamente el objeto
+    return data?.user ?? data;
   },
 
   getRoles: async (): Promise<string[]> => {
     const { data } = await api.get('/users/roles');
-    return data;
+    return normalizeArray<string>(data);
   },
 
   create: async (payload: CreateUserPayload): Promise<ApiUser> => {
     const { data } = await api.post<ApiUser>('/users', payload);
-    return data;
+    return data?.user ?? data;
   },
 
   update: async (id: string, payload: UpdateUserPayload): Promise<ApiUser> => {
     const { data } = await api.put<ApiUser>(`/users/${id}`, payload);
-    return data;
+    return data?.user ?? data;
   },
 
   changePassword: async (id: string, payload: ChangePasswordPayload): Promise<void> => {
@@ -303,7 +364,7 @@ export const userService = {
 
   toggleStatus: async (id: string): Promise<ApiUser> => {
     const { data } = await api.patch<ApiUser>(`/users/${id}/toggle-status`);
-    return data;
+    return data?.user ?? data;
   },
 
   delete: async (id: string): Promise<void> => {
@@ -319,7 +380,7 @@ export const userService = {
 export const permissionService = {
   getAll: async (role?: string): Promise<Permission[]> => {
     const { data } = await api.get('/permissions', { params: role ? { role } : undefined });
-    return data;
+    return normalizeArray<Permission>(data);
   },
 
   update: async (id: string, payload: UpdatePermissionPayload): Promise<Permission> => {
@@ -336,7 +397,7 @@ export const permissionService = {
 export const roleService = {
   getAll: async (): Promise<Role[]> => {
     const { data } = await api.get('/roles');
-    return data;
+    return normalizeArray<Role>(data);
   },
 };
 
@@ -344,12 +405,12 @@ export const roleService = {
 export const settingsService = {
   getAll: async (): Promise<Setting[]> => {
     const { data } = await api.get('/settings');
-    return data;
+    return normalizeArray<Setting>(data);
   },
 
   getPublic: async (): Promise<Setting[]> => {
     const { data } = await api.get('/settings/public');
-    return data;
+    return normalizeArray<Setting>(data);
   },
 
   update: async (id: string, payload: UpdateSettingPayload): Promise<Setting> => {
@@ -367,52 +428,54 @@ export const settingsService = {
 export const translationService = {
   getMap: async (language: Language): Promise<TranslationMap> => {
     const { data } = await api.get('/translations', { params: { language } });
+    // Puede venir { translations: {...} } o el mapa directo
+    if (data?.translations && typeof data.translations === 'object') return data.translations;
     return data;
   },
 };
 
 // ─── Recipe service ───────────────────────────────────────────────────────────
+// Respuesta real del backend: { recipes: [...], pagination: {...} }
 export const recipeService = {
   getAll: async (params?: RecipesListParams): Promise<PaginatedResponse<Recipe>> => {
     const { data } = await api.get('/recipes', { params });
-    return data;
+    return normalizePaginated<Recipe>(data);
   },
 
   getMine: async (params?: RecipesListParams): Promise<PaginatedResponse<Recipe>> => {
     const { data } = await api.get('/recipes/my', { params });
-    return data;
+    return normalizePaginated<Recipe>(data);
   },
 
   getFavourites: async (params?: PaginationParams): Promise<PaginatedResponse<Recipe>> => {
     const { data } = await api.get('/recipes/favourites', { params });
-    return data;
+    return normalizePaginated<Recipe>(data);
   },
 
   getById: async (id: string): Promise<Recipe> => {
     const { data } = await api.get(`/recipes/${id}`);
-    return data;
+    return data?.recipe ?? data;
   },
 
   create: async (payload: CreateRecipePayload): Promise<Recipe> => {
     const { data } = await api.post<Recipe>('/recipes', payload);
-    return data;
+    return data?.recipe ?? data;
   },
 
   update: async (id: string, payload: UpdateRecipePayload): Promise<Recipe> => {
     const { data } = await api.put<Recipe>(`/recipes/${id}`, payload);
-    return data;
+    return data?.recipe ?? data;
   },
 
   togglePublish: async (id: string): Promise<Recipe> => {
     const { data } = await api.patch<Recipe>(`/recipes/${id}/publish`);
-    return data;
+    return data?.recipe ?? data;
   },
 
   delete: async (id: string): Promise<void> => {
     await api.delete(`/recipes/${id}`);
   },
 
-  // Ratings
   createRating: async (id: string, payload: CreateRatingPayload): Promise<void> => {
     await api.post(`/recipes/${id}/ratings`, payload);
   },
@@ -421,41 +484,38 @@ export const recipeService = {
     await api.delete(`/recipes/${id}/ratings`);
   },
 
-  // Favourites
   toggleFavourite: async (id: string): Promise<{ isFavourited: boolean }> => {
     const { data } = await api.post(`/recipes/${id}/favourite`);
     return data;
   },
 
-  // Categories
   getCategories: async (): Promise<RecipeCategory[]> => {
     const { data } = await api.get('/recipes/categories');
-    return data;
+    return normalizeArray<RecipeCategory>(data);
   },
 
   createCategory: async (payload: CreateCategoryPayload): Promise<RecipeCategory> => {
     const { data } = await api.post<RecipeCategory>('/recipes/categories', payload);
-    return data;
+    return data?.category ?? data;
   },
 
   updateCategory: async (id: string, payload: Partial<CreateCategoryPayload>): Promise<RecipeCategory> => {
     const { data } = await api.put<RecipeCategory>(`/recipes/categories/${id}`, payload);
-    return data;
+    return data?.category ?? data;
   },
 
   deleteCategory: async (id: string): Promise<void> => {
     await api.delete(`/recipes/categories/${id}`);
   },
 
-  // Tags
   getTags: async (): Promise<RecipeTag[]> => {
     const { data } = await api.get('/recipes/tags');
-    return data;
+    return normalizeArray<RecipeTag>(data);
   },
 
   createTag: async (payload: CreateTagPayload): Promise<RecipeTag> => {
     const { data } = await api.post<RecipeTag>('/recipes/tags', payload);
-    return data;
+    return data?.tag ?? data;
   },
 
   deleteTag: async (id: string): Promise<void> => {
@@ -478,7 +538,7 @@ export const healthService = {
   },
 };
 
-// ─── Pagination import ──────────────────────────────────────────────────────────
+// ─── Types locales ─────────────────────────────────────────────────────────────
 interface PaginationParams {
   page?: number;
   limit?: number;

@@ -1,6 +1,4 @@
 // src/screens/recipes/RecipeDetailScreen.tsx
-// Full recipe detail: ingredients, instructions, ratings, favourite toggle.
-// Cross-platform: web, iOS, Android.
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -17,11 +15,16 @@ import { SPACING, RADIUS } from '../../constants/theme';
 
 interface Props {
   navigation: any;
-  route: { params: { recipeId: string } };
+  route: any; // usamos 'any' para máxima compatibilidad cross-navigator
 }
 
 export default function RecipeDetailScreen({ navigation, route }: Props) {
-  const { recipeId } = route.params;
+  // Soporta ambas formas de recibir el id:
+  //   route.params.recipeId  (Stack navigation)
+  //   route.params.id        (alternativa)
+  const recipeId: string | undefined =
+    route?.params?.recipeId ?? route?.params?.id;
+
   const { colors } = useTheme();
   const toast = useToast();
   const { user } = useAuth();
@@ -33,22 +36,25 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
   });
 
   const { execute: toggleFav } = useApiCall(recipeService.toggleFavourite, {
-    onSuccess: () => { toast.success(recipe?.isFavourited ? 'Removed from favourites' : 'Added to favourites'); loadRecipe(recipeId); },
+    onSuccess: () => {
+      toast.success(recipe?.isFavourited ? 'Removed from favourites' : 'Added to favourites');
+      if (recipeId) loadRecipe(recipeId);
+    },
     onError: (e) => toast.error('Failed', e),
   });
 
   const { execute: rateRecipe } = useApiCall(recipeService.createRating, {
-    onSuccess: () => { toast.success('Rating saved'); loadRecipe(recipeId); },
+    onSuccess: () => { toast.success('Rating saved'); if (recipeId) loadRecipe(recipeId); },
     onError: (e) => toast.error('Rating failed', e),
   });
 
   const { execute: removeRating } = useApiCall(recipeService.deleteRating, {
-    onSuccess: () => { toast.info('Rating removed'); setUserRating(0); loadRecipe(recipeId); },
+    onSuccess: () => { toast.info('Rating removed'); setUserRating(0); if (recipeId) loadRecipe(recipeId); },
     onError: (e) => toast.error('Failed', e),
   });
 
   const { execute: togglePublish } = useApiCall(recipeService.togglePublish, {
-    onSuccess: () => { toast.success('Publication status updated'); loadRecipe(recipeId); },
+    onSuccess: () => { toast.success('Publication status updated'); if (recipeId) loadRecipe(recipeId); },
     onError: (e) => toast.error('Failed', e),
   });
 
@@ -57,7 +63,12 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
     onError: (e) => toast.error('Delete failed', e),
   });
 
-  useEffect(() => { loadRecipe(recipeId); }, [recipeId]);
+  // Solo cargar si tenemos un id válido
+  useEffect(() => {
+    if (recipeId && recipeId !== 'undefined') {
+      loadRecipe(recipeId);
+    }
+  }, [recipeId]);
 
   useEffect(() => {
     if (!recipe) return;
@@ -68,24 +79,57 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
       headerRight: () => (
         <ActionMenu actions={[
           { label: 'Edit', icon: 'pencil-outline', onPress: () => navigation.navigate('RecipeForm', { recipeId }) },
-          { label: recipe.isPublished ? 'Unpublish' : 'Publish', icon: 'globe-outline', onPress: () => togglePublish(recipeId) },
-          { label: 'Delete', icon: 'trash-outline', danger: true, onPress: () => {
-            if (Platform.OS !== 'web') {
-              Alert.alert('Delete recipe', 'Are you sure?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Delete', style: 'destructive', onPress: () => deleteRecipe(recipeId) },
-              ]);
-            } else {
-              deleteRecipe(recipeId);
-            }
-          }},
+          { label: recipe.isPublished ? 'Unpublish' : 'Publish', icon: 'globe-outline', onPress: () => recipeId && togglePublish(recipeId) },
+          {
+            label: 'Delete', icon: 'trash-outline', danger: true,
+            onPress: () => {
+              if (Platform.OS !== 'web') {
+                Alert.alert('Delete recipe', 'Are you sure?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => recipeId && deleteRecipe(recipeId) },
+                ]);
+              } else {
+                if (recipeId) deleteRecipe(recipeId);
+              }
+            },
+          },
         ]} />
       ),
     });
   }, [recipe]);
 
-  if (loading && !recipe) return <View style={[styles.container, { backgroundColor: colors.background }]}><SkeletonList count={8} /></View>;
-  if (error || !recipe) return <EmptyState type="error" title="Recipe not found" description={error ?? undefined} actionLabel="Go back" onAction={() => navigation.goBack()} />;
+  // Sin id válido → pantalla de error inmediata
+  if (!recipeId || recipeId === 'undefined') {
+    return (
+      <EmptyState
+        type="error"
+        title="Recipe not found"
+        description="No recipe ID was provided."
+        actionLabel="Go back"
+        onAction={() => navigation.goBack()}
+      />
+    );
+  }
+
+  if (loading && !recipe) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <SkeletonList count={8} />
+      </View>
+    );
+  }
+
+  if (error || !recipe) {
+    return (
+      <EmptyState
+        type="error"
+        title="Recipe not found"
+        description={error ?? undefined}
+        actionLabel="Go back"
+        onAction={() => navigation.goBack()}
+      />
+    );
+  }
 
   const handleRate = async (score: number) => {
     setUserRating(score);
@@ -99,12 +143,13 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
       showsVerticalScrollIndicator={false}
     >
       {/* Cover image */}
-      {recipe.coverImage
-        ? <Image source={{ uri: recipe.coverImage }} style={styles.cover} />
-        : <View style={[styles.coverPlaceholder, { backgroundColor: colors.surfaceElevated }]}>
-            <Ionicons name="restaurant-outline" size={44} color={colors.textMuted} />
-          </View>
-      }
+      {recipe.coverImage ? (
+        <Image source={{ uri: recipe.coverImage }} style={styles.cover} resizeMode="cover" />
+      ) : (
+        <View style={[styles.coverPlaceholder, { backgroundColor: colors.surfaceElevated }]}>
+          <Ionicons name="restaurant-outline" size={44} color={colors.textMuted} />
+        </View>
+      )}
 
       {/* Header */}
       <View style={styles.header}>
@@ -130,12 +175,12 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
         {recipe.tags.map(t => <StatusBadge key={t.id} label={t.name} variant="secondary" size="sm" />)}
       </View>
 
-      {/* Stats row */}
+      {/* Stats */}
       <View style={[styles.statsRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {recipe.prepTimeMin != null && <Stat icon="time-outline" value={`${recipe.prepTimeMin}m`} label="Prep" colors={colors} />}
-        {recipe.cookTimeMin != null && <Stat icon="flame-outline" value={`${recipe.cookTimeMin}m`} label="Cook" colors={colors} />}
-        {recipe.servings    != null && <Stat icon="people-outline" value={String(recipe.servings)} label="Servings" colors={colors} />}
-        {recipe.avgRating   != null && <Stat icon="star"   value={recipe.avgRating.toFixed(1)} label={`${recipe.ratingsCount ?? 0} ratings`} colors={colors} iconColor="#F59E0B" />}
+        {recipe.prepTimeMin != null && <Stat icon="time-outline"   value={`${recipe.prepTimeMin}m`}         label="Prep"    colors={colors} />}
+        {recipe.cookTimeMin != null && <Stat icon="flame-outline"  value={`${recipe.cookTimeMin}m`}         label="Cook"    colors={colors} />}
+        {recipe.servings    != null && <Stat icon="people-outline" value={String(recipe.servings)}          label="Servings" colors={colors} />}
+        {recipe.avgRating   != null && <Stat icon="star"           value={recipe.avgRating.toFixed(1)}      label={`${recipe.ratingsCount ?? 0} ratings`} colors={colors} iconColor="#F59E0B" />}
       </View>
 
       {/* Description */}
@@ -151,9 +196,12 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
           {recipe.ingredients
             .sort((a, b) => a.displayOrder - b.displayOrder)
             .map((ing, i) => (
-              <View key={ing.id} style={[styles.ingRow, i < recipe.ingredients.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
+              <View
+                key={ing.id}
+                style={[styles.ingRow, i < recipe.ingredients.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}
+              >
                 <Text style={[styles.ingName, { color: colors.textPrimary }]}>{ing.name}</Text>
-                <Text style={[styles.ingQty, { color: colors.textSecondary }]}>
+                <Text style={[styles.ingQty,  { color: colors.textSecondary }]}>
                   {ing.quantity}{ing.unit ? ` ${ing.unit}` : ''}
                 </Text>
               </View>
@@ -202,15 +250,15 @@ function Stat({ icon, value, label, colors, iconColor }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content:   { paddingBottom: SPACING.xl },
+  container:        { flex: 1 },
+  content:          { paddingBottom: SPACING.xl },
   cover:            { width: '100%', height: 220 },
   coverPlaceholder: { width: '100%', height: 160, alignItems: 'center', justifyContent: 'center' },
-  header:    { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, gap: 8 },
-  title:     { fontSize: 22, fontWeight: '800', lineHeight: 28, flex: 1 },
-  category:  { fontSize: 13, marginTop: 4 },
-  favBtn:    { padding: 4 },
-  badges:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: SPACING.lg, marginTop: 8 },
+  header:           { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, gap: 8 },
+  title:            { fontSize: 22, fontWeight: '800', lineHeight: 28, flex: 1 },
+  category:         { fontSize: 13, marginTop: 4 },
+  favBtn:           { padding: 4 },
+  badges:           { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: SPACING.lg, marginTop: 8 },
   statsRow: {
     flexDirection: 'row', marginHorizontal: SPACING.lg, marginTop: SPACING.md,
     borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.md,
@@ -218,12 +266,12 @@ const styles = StyleSheet.create({
   stat:      { flex: 1, alignItems: 'center', gap: 2 },
   statValue: { fontSize: 16, fontWeight: '700' },
   statLabel: { fontSize: 11 },
-  description: { fontSize: 15, lineHeight: 22 },
-  ingRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9 },
-  ingName: { fontSize: 14, flex: 1 },
-  ingQty:  { fontSize: 14, fontWeight: '500' },
+  description:  { fontSize: 15, lineHeight: 22 },
+  ingRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9 },
+  ingName:      { fontSize: 14, flex: 1 },
+  ingQty:       { fontSize: 14, fontWeight: '500' },
   instructions: { fontSize: 15, lineHeight: 24 },
-  stars: { flexDirection: 'row', gap: 8, justifyContent: 'center', paddingVertical: SPACING.sm },
+  stars:        { flexDirection: 'row', gap: 8, justifyContent: 'center', paddingVertical: SPACING.sm },
   removeRating:     { alignItems: 'center', marginTop: 4 },
   removeRatingText: { fontSize: 12 },
 });

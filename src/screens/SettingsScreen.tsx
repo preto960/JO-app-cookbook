@@ -15,14 +15,17 @@ import { getSavedApiUrl, saveApiUrl, DEFAULT_API_URL } from '../services/api';
 import ThemedCard from '../components/ThemedCard';
 import SettingRow from '../components/SettingRow';
 
-export default function SettingsScreen() {
+interface Props {
+  navigation?: any;
+}
+
+export default function SettingsScreen({ navigation }: Props) {
   const { user, isSuperAdmin }                    = useAuth();
   const { colors }                                = useTheme();
   const toast                                     = useToast();
   const { maintenanceMode, emailNotifications,
           debugMode, rateLimiting, set, ready }   = useSettings();
 
-  // Register toast bridge for AuthContext logout toast
   useEffect(() => {
     registerToastBridge({ success: toast.success, error: toast.error, info: toast.info });
   }, [toast]);
@@ -39,10 +42,7 @@ export default function SettingsScreen() {
 
   const handleSaveUrl = async () => {
     const trimmed = urlDraft.trim();
-    if (!trimmed) {
-      toast.warning('Invalid URL', 'The URL cannot be empty.');
-      return;
-    }
+    if (!trimmed) { toast.warning('Invalid URL', 'The URL cannot be empty.'); return; }
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
       toast.warning('Invalid URL', 'URL must start with http:// or https://');
       return;
@@ -88,7 +88,6 @@ export default function SettingsScreen() {
     );
   }
 
-  // Don't render toggles until storage is loaded (avoids flash of wrong value)
   if (!ready) return null;
 
   return (
@@ -98,24 +97,50 @@ export default function SettingsScreen() {
       showsVerticalScrollIndicator={false}
     >
       {/* ── Admin banner ── */}
-      <View style={[styles.adminBanner, {
-        backgroundColor: colors.adminGoldDim,
-        borderColor: `${colors.adminGold}44`,
-      }]}>
+      <View style={[styles.adminBanner, { backgroundColor: colors.adminGoldDim, borderColor: `${colors.adminGold}44` }]}>
         <Text style={{ fontSize: 20 }}>👑</Text>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.adminBannerTitle, { color: colors.adminGold }]}>
-            Super Admin Panel
-          </Text>
+          <Text style={[styles.adminBannerTitle, { color: colors.adminGold }]}>Super Admin Panel</Text>
           <Text style={[styles.adminBannerSub, { color: colors.textSecondary }]}>
             Active session: {fullName(user)}
           </Text>
         </View>
       </View>
 
+      {/* ── Access Control (contiene el acceso a Permissions) ── */}
+      <ThemedCard title="Access Control">
+        {/* Botón de acceso a Permissions */}
+        <TouchableOpacity
+          style={[styles.permBtn, { borderBottomColor: colors.border }]}
+          onPress={() => navigation?.navigate('Permissions')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.permBtnIcon, { backgroundColor: colors.primaryDim }]}>
+            <Ionicons name="key-outline" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.permBtnTitle, { color: colors.textPrimary }]}>Permissions Matrix</Text>
+            <Text style={[styles.permBtnSub, { color: colors.textSecondary }]}>
+              Manage role-based access control
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <SettingRow
+          label="Rate Limiting"
+          description="Limit requests per IP"
+          type="toggle"
+          value={rateLimiting}
+          onToggle={async (v) => {
+            await set('rateLimiting', v);
+            toast.info(v ? 'Rate limiting enabled' : 'Rate limiting disabled');
+          }}
+        />
+      </ThemedCard>
+
       {/* ── API Config ── */}
       <ThemedCard title="API Configuration">
-        {/* Editable URL */}
         <View style={styles.urlBlock}>
           <View style={styles.urlLabelRow}>
             <Text style={[styles.urlLabel, { color: colors.textSecondary }]}>Base URL</Text>
@@ -124,29 +149,22 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   onPress={() => { setUrlDraft(apiUrl); setEditing(true); }}
                   style={[styles.urlIconBtn, { backgroundColor: colors.primaryDim }]}
-                  accessibilityLabel="Edit URL"
                 >
                   <Ionicons name="pencil-outline" size={14} color={colors.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleResetUrl}
                   style={[styles.urlIconBtn, { backgroundColor: colors.surfaceElevated }]}
-                  accessibilityLabel="Reset URL"
                 >
                   <Ionicons name="refresh-outline" size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
             )}
           </View>
-
           {editing ? (
             <>
               <TextInput
-                style={[styles.urlInput, {
-                  backgroundColor: colors.surfaceElevated,
-                  borderColor:     colors.primary,
-                  color:           colors.textPrimary,
-                }]}
+                style={[styles.urlInput, { backgroundColor: colors.surfaceElevated, borderColor: colors.primary, color: colors.textPrimary }]}
                 value={urlDraft}
                 onChangeText={setUrlDraft}
                 autoCapitalize="none"
@@ -159,47 +177,26 @@ export default function SettingsScreen() {
               <View style={styles.urlBtnRow}>
                 <TouchableOpacity
                   onPress={() => { setUrlDraft(apiUrl); setEditing(false); }}
-                  style={[styles.urlBtn, {
-                    backgroundColor: colors.surfaceElevated,
-                    borderColor:     colors.border,
-                  }]}
+                  style={[styles.urlBtn, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
                 >
                   <Text style={[styles.urlBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveUrl}
                   disabled={saving}
-                  style={[styles.urlBtn, {
-                    backgroundColor: colors.primary,
-                    opacity: saving ? 0.6 : 1,
-                  }]}
+                  style={[styles.urlBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
                 >
-                  <Text style={[styles.urlBtnText, { color: colors.background }]}>
-                    {saving ? 'Saving…' : 'Save'}
-                  </Text>
+                  <Text style={[styles.urlBtnText, { color: colors.background }]}>{saving ? 'Saving…' : 'Save'}</Text>
                 </TouchableOpacity>
               </View>
             </>
           ) : (
-            <Text
-              style={[styles.urlValue, { color: colors.primary, backgroundColor: colors.primaryDim }]}
-              numberOfLines={2}
-            >
+            <Text style={[styles.urlValue, { color: colors.primary, backgroundColor: colors.primaryDim }]} numberOfLines={2}>
               {apiUrl}
             </Text>
           )}
         </View>
 
-        <SettingRow
-          label="Rate Limiting"
-          description="Limit requests per IP"
-          type="toggle"
-          value={rateLimiting}
-          onToggle={async (v) => {
-            await set('rateLimiting', v);
-            toast.info(v ? 'Rate limiting enabled' : 'Rate limiting disabled');
-          }}
-        />
         <SettingRow
           label="Debug Mode"
           description="Enable detailed server logs"
@@ -248,10 +245,7 @@ export default function SettingsScreen() {
           onPress={() =>
             Alert.alert('Clear Cache', 'Are you sure?', [
               { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Confirm', style: 'destructive',
-                onPress: () => toast.success('Cache cleared'),
-              },
+              { text: 'Confirm', style: 'destructive', onPress: () => toast.success('Cache cleared') },
             ])
           }
         />
@@ -282,10 +276,7 @@ export default function SettingsScreen() {
               'This will reset the test database. Are you absolutely sure?',
               [
                 { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Reset', style: 'destructive',
-                  onPress: () => toast.error('Database reset', 'All test data has been deleted.'),
-                },
+                { text: 'Reset', style: 'destructive', onPress: () => toast.error('Database reset', 'All test data has been deleted.') },
               ]
             )
           }
@@ -308,6 +299,22 @@ const styles = StyleSheet.create({
   adminBanner:      { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.md, marginBottom: SPACING.lg },
   adminBannerTitle: { fontWeight: '700', fontSize: 15 },
   adminBannerSub:   { fontSize: 12, marginTop: 2 },
+
+  // Permissions button
+  permBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    marginBottom: 4,
+  },
+  permBtnIcon: {
+    width: 38, height: 38, borderRadius: RADIUS.md,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  permBtnTitle: { fontSize: 15, fontWeight: '600' },
+  permBtnSub:   { fontSize: 12, marginTop: 2 },
 
   urlBlock:    { paddingVertical: SPACING.md, gap: 8 },
   urlLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

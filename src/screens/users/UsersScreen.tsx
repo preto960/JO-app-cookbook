@@ -1,11 +1,8 @@
 // src/screens/users/UsersScreen.tsx
-// Paginated user list with search, role/status filters, and row actions.
-// Only accessible to ADMIN/DEVELOPER roles.
-// Cross-platform: web, iOS, Android.
 import React, { useEffect, useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl,
+  TouchableOpacity, RefreshControl, TextInput, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
@@ -13,26 +10,14 @@ import { useToast } from '../../context/ToastContext';
 import { userService } from '../../services/api';
 import { usePagination } from '../../hooks/usePagination';
 import { useApiCall } from '../../hooks/useApiCall';
-import {
-  SearchBar, FilterBar, StatusBadge, EmptyState,
-  SkeletonList, Pagination, ActionMenu, SectionHeader, ListCard,
-} from '../../components';
+import { StatusBadge, EmptyState, SkeletonList, Pagination, ActionMenu } from '../../components';
 import { SPACING, RADIUS } from '../../constants/theme';
-import type { ApiUser, FilterOption } from '../../types/api.types';
+import type { ApiUser } from '../../types/api.types';
 
-const ROLE_FILTERS: FilterOption[] = [
-  { label: 'Admin',     value: 'ADMIN' },
-  { label: 'Developer', value: 'DEVELOPER' },
-  { label: 'User',      value: 'USER' },
-];
-const STATUS_FILTERS: FilterOption[] = [
-  { label: 'Active',   value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
-];
+const ROLE_OPTIONS   = ['All roles',   'ADMIN', 'DEVELOPER', 'USER'];
+const STATUS_OPTIONS = ['All statuses', 'Active', 'Inactive'];
 
-interface Props {
-  navigation: any;
-}
+interface Props { navigation: any }
 
 export default function UsersScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -50,8 +35,7 @@ export default function UsersScreen({ navigation }: Props) {
   });
 
   const {
-    items, loading, loadingMore, error,
-    page, totalPages, total,
+    items: rawItems, loading, page, totalPages, total,
     loadPage, refresh, setParams,
   } = usePagination<ApiUser, any>({
     apiFunction: userService.getAll,
@@ -59,16 +43,16 @@ export default function UsersScreen({ navigation }: Props) {
     onError: (e) => toast.error('Load failed', e),
   });
 
-  // Sync filters → params and refresh
+  const items = Array.isArray(rawItems) ? rawItems : [];
+
   useEffect(() => {
     setParams({
       ...(search ? { search } : {}),
       ...(role   ? { role }   : {}),
-      ...(status ? { status } : {}),
+      ...(status ? { status: status.toLowerCase() } : {}),
     });
   }, [search, role, status]);
 
-  // Trigger fetch after params update
   useEffect(() => { refresh(); }, [search, role, status]);
 
   const handleToggleStatus = useCallback(async (user: ApiUser) => {
@@ -85,146 +69,157 @@ export default function UsersScreen({ navigation }: Props) {
     refresh();
   }, [deleteUser, refresh]);
 
-  const renderUser = (user: ApiUser) => (
-    <TouchableOpacity
-      key={user.id}
-      style={[styles.row, { borderBottomColor: colors.border }]}
-      onPress={() => navigation.navigate('UserDetail', { userId: user.id })}
-      activeOpacity={0.7}
-    >
-      {/* Avatar */}
-      <View style={[styles.avatar, { backgroundColor: colors.primaryDim }]}>
-        {user.avatar
-          ? null
-          : <Text style={[styles.avatarText, { color: colors.primary }]}>
-              {user.firstName?.[0]?.toUpperCase() ?? 'U'}
-            </Text>
-        }
-      </View>
-
-      {/* Info */}
-      <View style={styles.info}>
-        <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1}>
-          {user.firstName} {user.lastName}
-        </Text>
-        <Text style={[styles.email, { color: colors.textSecondary }]} numberOfLines={1}>
-          {user.email}
-        </Text>
-      </View>
-
-      {/* Badges */}
-      <View style={styles.badges}>
-        <StatusBadge label={user.role} auto size="sm" />
-        <StatusBadge label={user.isActive ? 'active' : 'inactive'} auto size="sm" />
-      </View>
-
-      {/* Actions */}
-      <ActionMenu actions={[
-        {
-          label: 'Edit',
-          icon: 'pencil-outline',
-          onPress: () => navigation.navigate('UserForm', { userId: user.id }),
-        },
-        {
-          label: user.isActive ? 'Deactivate' : 'Activate',
-          icon: user.isActive ? 'pause-circle-outline' : 'play-circle-outline',
-          onPress: () => handleToggleStatus(user),
-        },
-        {
-          label: 'Change password',
-          icon: 'key-outline',
-          onPress: () => navigation.navigate('UserPassword', { userId: user.id }),
-        },
-        {
-          label: 'Delete',
-          icon: 'trash-outline',
-          danger: true,
-          onPress: () => handleDelete(user),
-        },
-      ]} />
-    </TouchableOpacity>
-  );
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Search + filters */}
-      <View style={styles.filterArea}>
-        <SearchBar
-          placeholder="Search by name or email…"
-          onSearch={setSearch}
-        />
-        <View style={styles.filterRow}>
-          <FilterBar
-            options={ROLE_FILTERS}
-            value={role}
-            onChange={setRole}
-            allLabel="All roles"
+
+      {/* Barra de búsqueda compacta */}
+      <View style={[styles.searchBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View style={[styles.searchInput, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
+          <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+          <TextInput
+            style={[styles.input, { color: colors.textPrimary }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}]}
+            placeholder="Search users…"
+            placeholderTextColor={colors.textMuted}
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={15} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
         </View>
-        <View style={styles.filterRow}>
-          <FilterBar
-            options={STATUS_FILTERS}
-            value={status}
-            onChange={setStatus}
-            allLabel="All statuses"
-          />
-        </View>
+
+        <TouchableOpacity
+          style={[styles.addBtn, { backgroundColor: colors.primary }]}
+          onPress={() => navigation.navigate('UserForm')}
+        >
+          <Ionicons name="add" size={18} color={colors.background} />
+        </TouchableOpacity>
       </View>
 
+      {/* Filtros de chips */}
+      <View style={[styles.filtersRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {ROLE_OPTIONS.map(opt => {
+            const val = opt === 'All roles' ? null : opt;
+            const active = role === val;
+            return (
+              <TouchableOpacity
+                key={opt}
+                style={[styles.chip, active
+                  ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                  : { backgroundColor: colors.surfaceElevated, borderColor: colors.border }
+                ]}
+                onPress={() => setRole(val)}
+              >
+                <Text style={[styles.chipText, { color: active ? colors.background : colors.textSecondary }]}>
+                  {opt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {STATUS_OPTIONS.map(opt => {
+            const val = opt === 'All statuses' ? null : opt;
+            const active = status === val;
+            return (
+              <TouchableOpacity
+                key={opt}
+                style={[styles.chip, active
+                  ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                  : { backgroundColor: colors.surfaceElevated, borderColor: colors.border }
+                ]}
+                onPress={() => setStatus(val)}
+              >
+                <Text style={[styles.chipText, { color: active ? colors.background : colors.textSecondary }]}>
+                  {opt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Lista */}
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={true}
         refreshControl={
           <RefreshControl refreshing={loading && items.length > 0} onRefresh={refresh} tintColor={colors.primary} />
         }
       >
-        <SectionHeader
-          title="Users"
-          subtitle={total > 0 ? `${total} total` : undefined}
-          rightElement={
-            <TouchableOpacity
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
-              onPress={() => navigation.navigate('UserForm')}
-            >
-              <Ionicons name="add" size={18} color={colors.background} />
-              <Text style={[styles.addLabel, { color: colors.background }]}>New user</Text>
-            </TouchableOpacity>
-          }
-        />
+        {/* Header de sección */}
+        <View style={styles.sectionRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Users</Text>
+          {total > 0 && (
+            <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{total} total</Text>
+          )}
+        </View>
 
         {loading && items.length === 0 ? (
-          <SkeletonList count={8} />
-        ) : error && items.length === 0 ? (
-          <EmptyState
-            type="error"
-            title="Failed to load users"
-            description={error}
-            actionLabel="Retry"
-            onAction={refresh}
-          />
+          <SkeletonList count={6} />
         ) : items.length === 0 ? (
           <EmptyState
-            type="search"
+            type={search ? 'search' : 'empty'}
             title={search ? 'No results found' : 'No users yet'}
             description={search ? `No users match "${search}"` : 'Create the first user.'}
             actionLabel={search ? undefined : 'New user'}
             onAction={search ? undefined : () => navigation.navigate('UserForm')}
           />
         ) : (
-          <ListCard noPadding>
-            {items.map(renderUser)}
-          </ListCard>
+          <View style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {items.map((user, idx) => (
+              <TouchableOpacity
+                key={user.id}
+                style={[
+                  styles.userRow,
+                  idx < items.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                ]}
+                onPress={() => navigation.navigate('UserDetail', { userId: user.id })}
+                activeOpacity={0.7}
+              >
+                {/* Avatar */}
+                <View style={[styles.avatar, { backgroundColor: colors.primaryDim }]}>
+                  <Text style={[styles.avatarText, { color: colors.primary }]}>
+                    {user.firstName?.[0]?.toUpperCase() ?? 'U'}
+                  </Text>
+                </View>
+
+                {/* Info */}
+                <View style={styles.userInfo}>
+                  <Text style={[styles.userName, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {user.firstName} {user.lastName}
+                  </Text>
+                  <Text style={[styles.userEmail, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {user.email}
+                  </Text>
+                </View>
+
+                {/* Badges + actions */}
+                <View style={styles.userRight}>
+                  <View style={styles.badgesCol}>
+                    <StatusBadge label={user.role} auto size="sm" />
+                    <StatusBadge label={user.isActive ? 'active' : 'inactive'} auto size="sm" />
+                  </View>
+                  <ActionMenu actions={[
+                    { label: 'Edit',            icon: 'pencil-outline',       onPress: () => navigation.navigate('UserForm', { userId: user.id }) },
+                    { label: 'Change password', icon: 'key-outline',          onPress: () => navigation.navigate('UserPassword', { userId: user.id }) },
+                    { label: user.isActive ? 'Deactivate' : 'Activate', icon: user.isActive ? 'pause-circle-outline' : 'play-circle-outline', onPress: () => handleToggleStatus(user) },
+                    { label: 'Delete',          icon: 'trash-outline',        danger: true, onPress: () => handleDelete(user) },
+                  ]} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
 
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          loading={loading}
-          onPage={loadPage}
-        />
-
+        <Pagination page={page} totalPages={totalPages} total={total} loading={loading} onPage={loadPage} />
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
     </View>
@@ -232,34 +227,74 @@ export default function UsersScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container:  { flex: 1 },
-  filterArea: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, gap: 8 },
-  filterRow:  {},
-  scroll:     { flex: 1 },
-  content:    { paddingHorizontal: SPACING.lg, paddingTop: SPACING.sm },
+  container: { flex: 1 },
 
-  row: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    gap: SPACING.sm,
     paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
+  },
+  searchInput: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    height: 40, borderRadius: RADIUS.md, borderWidth: 1,
+    paddingHorizontal: SPACING.sm, gap: 6,
+  },
+  input: { flex: 1, fontSize: 14 },
+  addBtn: {
+    width: 40, height: 40, borderRadius: RADIUS.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  filtersRow: {
+    gap: 2,
+    borderBottomWidth: 1,
+    paddingBottom: SPACING.xs,
+  },
+  chips: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 5,
+  },
+  chip: {
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  chipText: { fontSize: 12, fontWeight: '600' },
+
+  scroll:      { flex: 1 },
+  listContent: { padding: SPACING.md },
+
+  sectionRow: {
+    flexDirection: 'row', alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  sectionTitle: { fontSize: 15, fontWeight: '700' },
+  sectionCount: { fontSize: 12 },
+
+  listCard: {
+    borderRadius: RADIUS.lg, borderWidth: 1,
+    overflow: 'hidden', marginBottom: SPACING.md,
+  },
+  userRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: SPACING.md, paddingVertical: 12,
     gap: 10,
   },
   avatar: {
-    width: 38, height: 38, borderRadius: 19,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   avatarText: { fontSize: 14, fontWeight: '700' },
-  info:       { flex: 1, minWidth: 0 },
-  name:       { fontSize: 14, fontWeight: '600' },
-  email:      { fontSize: 12, marginTop: 1 },
-  badges:     { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
-
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: RADIUS.md, paddingHorizontal: 12, paddingVertical: 7,
-  },
-  addLabel: { fontSize: 13, fontWeight: '700' },
+  userInfo:   { flex: 1, minWidth: 0 },
+  userName:   { fontSize: 14, fontWeight: '600' },
+  userEmail:  { fontSize: 12, marginTop: 1 },
+  userRight:  { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  badgesCol:  { gap: 3, alignItems: 'flex-end' },
 });

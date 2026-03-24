@@ -1,13 +1,14 @@
 // src/components/index.ts
-export { default as StatusBadge }   from './StatusBadge';
-export { default as EmptyState }    from './EmptyState';
-export { default as SearchBar }     from './SearchBar';
-export { default as FilterBar }     from './FilterBar';
-export { default as Pagination }    from './Pagination';
-export { default as FormField }     from './FormField';
-export { default as ActionMenu }    from './ActionMenu';
-export { default as ModalSheet }    from './ModalSheet';
-export { default as InlineSelect }  from './InlineSelect';
+export { default as StatusBadge }     from './StatusBadge';
+export { default as EmptyState }      from './EmptyState';
+export { default as SearchBar }       from './SearchBar';
+export { default as FilterBar }       from './FilterBar';
+export { default as SharedFilterBar } from './SharedFilterBar';
+export { default as Pagination }      from './Pagination';
+export { default as FormField }       from './FormField';
+export { default as ActionMenu }      from './ActionMenu';
+export { default as ModalSheet }      from './ModalSheet';
+export { default as InlineSelect }    from './InlineSelect';
 export { SectionHeader, ListCard, Divider } from './ListCard';
 export {
   SkeletonBox, SkeletonListRow, SkeletonCard,

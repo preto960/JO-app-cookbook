@@ -17,6 +17,15 @@ interface Props {
 
 const DEFAULT_ROLES = ['USER', 'ADMIN', 'DEVELOPER'];
 
+// Normalize role value: accepts string or object with name/displayName
+function normalizeRole(r: any): string {
+  if (typeof r === 'string') return r;
+  if (r && typeof r === 'object') {
+    return r.name ?? r.displayName ?? r.id ?? String(r);
+  }
+  return String(r);
+}
+
 export default function UserFormScreen({ navigation, route }: Props) {
   const userId = route.params?.userId;
   const isEdit = !!userId;
@@ -38,7 +47,7 @@ export default function UserFormScreen({ navigation, route }: Props) {
       setEmail(user.email);
       setFirstName(user.firstName);
       setLastName(user.lastName);
-      setRole(user.role);
+      setRole(normalizeRole(user.role));
       setIsActive(user.isActive);
       setBio(user.bio ?? '');
     },
@@ -47,7 +56,11 @@ export default function UserFormScreen({ navigation, route }: Props) {
 
   const { execute: loadRoles } = useApiCall(userService.getRoles, {
     onSuccess: (roles) => {
-      if (Array.isArray(roles) && roles.length) setAvailableRoles(roles);
+      if (Array.isArray(roles) && roles.length) {
+        // Normalize: backend may return strings or objects
+        const normalized = roles.map(normalizeRole).filter(Boolean);
+        if (normalized.length) setAvailableRoles(normalized);
+      }
     },
   });
 
@@ -151,7 +164,6 @@ export default function UserFormScreen({ navigation, route }: Props) {
       )}
 
       <ThemedCard title="Role & status">
-        {/* InlineSelect en vez de Modal — no abre pantalla en blanco */}
         <InlineSelect
           label="Role"
           options={roleOptions}

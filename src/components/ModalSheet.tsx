@@ -26,12 +26,14 @@ interface Props {
   maxHeightPct?:    number;
   /** Prevent closing by tapping backdrop */
   dismissable?:     boolean;
+  /** Compact mode for simple selections. Smaller width on web. */
+  compact?:         boolean;
 }
 
 export default function ModalSheet({
   visible, onClose, title, children,
   primaryLabel, onPrimary, primaryLoading, primaryDanger,
-  footer, maxHeightPct = 85, dismissable = true,
+  footer, maxHeightPct = 85, dismissable = true, compact = false,
 }: Props) {
   const { colors } = useTheme();
   const isWeb = Platform.OS === 'web';
@@ -39,7 +41,9 @@ export default function ModalSheet({
   const content = (
     <View style={[
       styles.sheet,
-      isWeb ? styles.centered : [styles.bottom, { maxHeight: `${maxHeightPct}%` as any }],
+      isWeb 
+        ? (compact ? styles.centeredCompact : styles.centered)
+        : [styles.bottom, { maxHeight: `${maxHeightPct}%` as any }],
       {
         backgroundColor: colors.surface,
         borderColor:     colors.border,
@@ -137,6 +141,17 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: 480,
+    borderRadius: RADIUS.xl,
+    marginBottom: 'auto' as any,
+    marginTop: 'auto' as any,
+    borderWidth: 1,
+    borderTopWidth: 1,
+  },
+  centeredCompact: {
+    // Web: smaller centered card for simple selections
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 320,
     borderRadius: RADIUS.xl,
     marginBottom: 'auto' as any,
     marginTop: 'auto' as any,

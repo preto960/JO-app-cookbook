@@ -22,11 +22,12 @@ interface PaginationState<T> {
   total:       number;
   hasMore:     boolean;
   // Actions
-  loadPage:    (page: number) => Promise<void>;
-  loadMore:    () => Promise<void>;
-  refresh:     () => Promise<void>;
-  setParams:   (params: any) => void;
-  reset:       () => void;
+  loadPage:         (page: number) => Promise<void>;
+  loadMore:         () => Promise<void>;
+  refresh:          () => Promise<void>;
+  refreshWithParams: (params: Partial<P>) => Promise<void>;
+  setParams:        (params: any) => Promise<Partial<P>>;
+  reset:            () => void;
 }
 
 /**
@@ -55,18 +56,21 @@ export function usePagination<T, P extends object = object>(
   const mountedRef = useRef(true);
   const callIdRef  = useRef(0);
 
-  const fetchPage = useCallback(async (targetPage: number, append: boolean) => {
+  const fetchPage = useCallback(async (targetPage: number, append: boolean, customParams?: Partial<P>) => {
     const callId = ++callIdRef.current;
     if (append) setLoadingMore(true);
     else        setLoading(true);
     setError(null);
 
     try {
-      const result = await apiFunction({
-        ...params,
+      const paramsToUse = customParams || params;
+      const finalParams = {
+        ...paramsToUse,
         page:  targetPage,
         limit: pageSize,
-      } as P & { page: number; limit: number });
+      } as P & { page: number; limit: number };
+      
+      const result = await apiFunction(finalParams);
 
       if (!mountedRef.current || callId !== callIdRef.current) return;
 
@@ -89,18 +93,29 @@ export function usePagination<T, P extends object = object>(
 
   const loadPage = useCallback((p: number) => fetchPage(p, false), [fetchPage]);
   const refresh  = useCallback(() => fetchPage(1, false), [fetchPage]);
+  const refreshWithParams = useCallback((customParams: Partial<P>) => fetchPage(1, false, customParams), [fetchPage]);
   const loadMore = useCallback(() => {
     if (loadingMore || loading || page >= totalPages) return Promise.resolve();
     return fetchPage(page + 1, true);
   }, [fetchPage, loading, loadingMore, page, totalPages]);
 
-  const setParams = useCallback((newParams: Partial<P>) => {
-    setParamsState(prev => ({ ...prev, ...newParams }));
-    // Reset to page 1 on param change — the caller should trigger refresh()
-    setPage(1);
-    setItems([]);
-    setTotalPages(1);
-    setTotal(0);
+  const setParams = useCallback(async (newParams: Partial<P>) => {
+    return new Promise<Partial<P>>((resolve) => {
+      setParamsState(prev => {
+        const mergedParams = { ...prev, ...newParams };
+        
+        // Reset to page 1 on param change
+        setPage(1);
+        setItems([]);
+        setTotalPages(1);
+        setTotal(0);
+        
+        // Resolve with the merged params
+        setTimeout(() => resolve(mergedParams), 0);
+        
+        return mergedParams;
+      });
+    });
   }, []);
 
   const reset = useCallback(() => {
@@ -118,6 +133,6 @@ export function usePagination<T, P extends object = object>(
     items, loading, loadingMore, error,
     page, totalPages, total,
     hasMore: page < totalPages,
-    loadPage, loadMore, refresh, setParams, reset,
+    loadPage, loadMore, refresh, refreshWithParams, setParams, reset,
   };
 }

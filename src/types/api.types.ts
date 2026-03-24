@@ -189,7 +189,18 @@ export interface Recipe {
   avgRating?: number | null;
   ratingsCount?: number;
   isFavourited?: boolean;
+  userRating?: number | null;
+  // Backend fields (real structure)
+  averageRating?: number;
+  ratingCount?: number;
+  ratings?: Array<{
+    id: string;
+    userId: string;
+    score: number;
+    user: Pick<ApiUser, 'id' | 'firstName' | 'lastName'>;
+  }>;
   createdBy?: Pick<ApiUser, 'id' | 'firstName' | 'lastName'>;
+  creator?: Pick<ApiUser, 'id' | 'firstName' | 'lastName'>;
   createdAt: string;
   updatedAt: string;
 }

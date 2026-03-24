@@ -15,13 +15,10 @@ import { SPACING, RADIUS } from '../../constants/theme';
 
 interface Props {
   navigation: any;
-  route: any; // usamos 'any' para máxima compatibilidad cross-navigator
+  route: any;
 }
 
 export default function RecipeDetailScreen({ navigation, route }: Props) {
-  // Soporta ambas formas de recibir el id:
-  //   route.params.recipeId  (Stack navigation)
-  //   route.params.id        (alternativa)
   const recipeId: string | undefined =
     route?.params?.recipeId ?? route?.params?.id;
 
@@ -32,6 +29,15 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
   const [userRating, setUserRating] = useState(0);
 
   const { data: recipe, loading, error, execute: loadRecipe } = useApiCall(recipeService.getById, {
+    onSuccess: (r) => {
+      // Find user's rating in the ratings array
+      const userRatingObj = r.ratings?.find(rating => rating.userId === user?.id?.toString());
+      if (userRatingObj) {
+        setUserRating(userRatingObj.score);
+      } else {
+        setUserRating(0);
+      }
+    },
     onError: (e) => toast.error('Failed to load recipe', e),
   });
 
@@ -63,7 +69,6 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
     onError: (e) => toast.error('Delete failed', e),
   });
 
-  // Solo cargar si tenemos un id válido
   useEffect(() => {
     if (recipeId && recipeId !== 'undefined') {
       loadRecipe(recipeId);
@@ -72,11 +77,20 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (!recipe) return;
-    const isOwner = recipe.createdBy?.id === user?.id;
-    if (!isOwner) return;
+    const isOwner = (recipe.createdBy?.id || recipe.creator?.id) === user?.id?.toString();
     navigation.setOptions({
       title: recipe.title,
-      headerRight: () => (
+      headerLeft: () => (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.navigate('Recipes')}
+          activeOpacity={0.7}
+          accessibilityLabel="Go back to recipes"
+        >
+          <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
+        </TouchableOpacity>
+      ),
+      headerRight: isOwner ? () => (
         <ActionMenu actions={[
           { label: 'Edit', icon: 'pencil-outline', onPress: () => navigation.navigate('RecipeForm', { recipeId }) },
           { label: recipe.isPublished ? 'Unpublish' : 'Publish', icon: 'globe-outline', onPress: () => recipeId && togglePublish(recipeId) },
@@ -94,11 +108,10 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
             },
           },
         ]} />
-      ),
+      ) : undefined,
     });
   }, [recipe]);
 
-  // Sin id válido → pantalla de error inmediata
   if (!recipeId || recipeId === 'undefined') {
     return (
       <EmptyState
@@ -140,7 +153,7 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={true}
     >
       {/* Cover image */}
       {recipe.coverImage ? (
@@ -153,13 +166,13 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
 
       {/* Header */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
+        <View style={styles.headerText}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>{recipe.title}</Text>
           {recipe.category && (
             <Text style={[styles.category, { color: colors.textSecondary }]}>{recipe.category.name}</Text>
           )}
         </View>
-        <TouchableOpacity onPress={() => toggleFav(recipeId)} style={styles.favBtn}>
+        <TouchableOpacity onPress={() => toggleFav(recipeId)} style={styles.favBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons
             name={recipe.isFavourited ? 'heart' : 'heart-outline'}
             size={26}
@@ -175,74 +188,100 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
         {recipe.tags.map(t => <StatusBadge key={t.id} label={t.name} variant="secondary" size="sm" />)}
       </View>
 
-      {/* Stats */}
+      {/* Stats row */}
       <View style={[styles.statsRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {recipe.prepTimeMin != null && <Stat icon="time-outline"   value={`${recipe.prepTimeMin}m`}         label="Prep"    colors={colors} />}
-        {recipe.cookTimeMin != null && <Stat icon="flame-outline"  value={`${recipe.cookTimeMin}m`}         label="Cook"    colors={colors} />}
-        {recipe.servings    != null && <Stat icon="people-outline" value={String(recipe.servings)}          label="Servings" colors={colors} />}
-        {recipe.avgRating   != null && <Stat icon="star"           value={recipe.avgRating.toFixed(1)}      label={`${recipe.ratingsCount ?? 0} ratings`} colors={colors} iconColor="#F59E0B" />}
+        {recipe.prepTimeMin != null && (
+          <StatItem icon="time-outline" value={`${recipe.prepTimeMin}m`} label="Prep" colors={colors} />
+        )}
+        {recipe.cookTimeMin != null && (
+          <StatItem icon="flame-outline" value={`${recipe.cookTimeMin}m`} label="Cook" colors={colors} />
+        )}
+        {recipe.servings != null && (
+          <StatItem icon="people-outline" value={String(recipe.servings)} label="Servings" colors={colors} />
+        )}
       </View>
 
-      {/* Description */}
-      {recipe.description && (
-        <ThemedCard>
-          <Text style={[styles.description, { color: colors.textPrimary }]}>{recipe.description}</Text>
-        </ThemedCard>
-      )}
-
-      {/* Ingredients */}
-      {recipe.ingredients.length > 0 && (
-        <ThemedCard title={`Ingredients (${recipe.ingredients.length})`}>
-          {recipe.ingredients
-            .sort((a, b) => a.displayOrder - b.displayOrder)
-            .map((ing, i) => (
-              <View
-                key={ing.id}
-                style={[styles.ingRow, i < recipe.ingredients.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}
-              >
-                <Text style={[styles.ingName, { color: colors.textPrimary }]}>{ing.name}</Text>
-                <Text style={[styles.ingQty,  { color: colors.textSecondary }]}>
-                  {ing.quantity}{ing.unit ? ` ${ing.unit}` : ''}
-                </Text>
-              </View>
-            ))}
-        </ThemedCard>
-      )}
-
-      {/* Instructions */}
-      <ThemedCard title="Instructions">
-        <Text style={[styles.instructions, { color: colors.textPrimary }]}>{recipe.instructions}</Text>
-      </ThemedCard>
-
-      {/* Rating */}
-      <ThemedCard title="Rate this recipe">
-        <View style={styles.stars}>
+      {/* Rating - compact version */}
+      <View style={[styles.ratingSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.ratingTitle, { color: colors.textPrimary }]}>Rate this recipe</Text>
+        <View style={styles.starsCompact}>
           {[1, 2, 3, 4, 5].map((s) => (
-            <TouchableOpacity key={s} onPress={() => handleRate(s)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+            <TouchableOpacity
+              key={s}
+              onPress={() => handleRate(s)}
+              hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
+            >
               <Ionicons
                 name={s <= userRating ? 'star' : 'star-outline'}
-                size={30}
+                size={20}
                 color={s <= userRating ? '#F59E0B' : colors.textMuted}
               />
             </TouchableOpacity>
           ))}
         </View>
         {userRating > 0 && (
-          <TouchableOpacity onPress={() => removeRating(recipeId)} style={styles.removeRating}>
-            <Text style={[styles.removeRatingText, { color: colors.textMuted }]}>Remove my rating</Text>
+          <TouchableOpacity onPress={() => removeRating(recipeId)} style={styles.removeRatingCompact}>
+            <Text style={[styles.removeRatingTextCompact, { color: colors.textMuted }]}>Remove</Text>
           </TouchableOpacity>
         )}
-      </ThemedCard>
+      </View>
+
+      <View style={styles.contentPadding}>
+        {/* Description */}
+        {!!recipe.description && (
+          <ThemedCard>
+            <Text style={[styles.description, { color: colors.textPrimary }]}>{recipe.description}</Text>
+          </ThemedCard>
+        )}
+
+        {/* Ingredients */}
+        {recipe.ingredients.length > 0 && (
+          <ThemedCard title={`Ingredients (${recipe.ingredients.length})`}>
+            <View style={[styles.ingredientsContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              {recipe.ingredients
+                .sort((a, b) => a.displayOrder - b.displayOrder)
+                .map((ing, i) => (
+                  <View
+                    key={ing.id}
+                    style={[
+                      styles.ingRow,
+                      { borderBottomColor: colors.border },
+                      i === recipe.ingredients.length - 1 && { borderBottomWidth: 0 },
+                    ]}
+                  >
+                    <View style={[styles.ingIcon, { backgroundColor: colors.primaryDim }]}>
+                      <Ionicons name="nutrition-outline" size={14} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.ingName, { color: colors.textPrimary }]}>{ing.name}</Text>
+                      <Text style={[styles.ingQty, { color: colors.textSecondary }]}>
+                        {ing.quantity}{ing.unit ? ` ${ing.unit}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+            </View>
+          </ThemedCard>
+        )}
+
+        {/* Instructions */}
+        <ThemedCard title="Instructions">
+          <View style={[styles.instructionsContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Text style={[styles.instructions, { color: colors.textPrimary }]}>{recipe.instructions}</Text>
+          </View>
+        </ThemedCard>
+
+      </View>
 
       <View style={{ height: SPACING.xl }} />
     </ScrollView>
   );
 }
 
-function Stat({ icon, value, label, colors, iconColor }: any) {
+function StatItem({ icon, value, label, colors, iconColor }: any) {
   return (
     <View style={styles.stat}>
-      <Ionicons name={icon} size={16} color={iconColor ?? colors.primary} />
+      <Ionicons name={icon} size={18} color={iconColor ?? colors.primary} />
       <Text style={[styles.statValue, { color: colors.textPrimary }]}>{value}</Text>
       <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
     </View>
@@ -250,28 +289,113 @@ function Stat({ icon, value, label, colors, iconColor }: any) {
 }
 
 const styles = StyleSheet.create({
-  container:        { flex: 1 },
-  content:          { paddingBottom: SPACING.xl },
+  container: { flex: 1 },
+  content:   { paddingBottom: SPACING.xl },
+  contentPadding: { paddingHorizontal: SPACING.md },
+
   cover:            { width: '100%', height: 220 },
   coverPlaceholder: { width: '100%', height: 160, alignItems: 'center', justifyContent: 'center' },
-  header:           { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, gap: 8 },
-  title:            { fontSize: 22, fontWeight: '800', lineHeight: 28, flex: 1 },
-  category:         { fontSize: 13, marginTop: 4 },
-  favBtn:           { padding: 4 },
-  badges:           { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: SPACING.lg, marginTop: 8 },
-  statsRow: {
-    flexDirection: 'row', marginHorizontal: SPACING.lg, marginTop: SPACING.md,
-    borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.md,
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    gap: 8,
   },
-  stat:      { flex: 1, alignItems: 'center', gap: 2 },
+  headerText: { flex: 1 },
+  title:    { fontSize: 22, fontWeight: '800', lineHeight: 28 },
+  category: { fontSize: 13, marginTop: 4 },
+  favBtn:   { paddingTop: 2 },
+
+  badges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+
+  statsRow: {
+    flexDirection: 'row',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  stat:      { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 4 },
   statValue: { fontSize: 16, fontWeight: '700' },
-  statLabel: { fontSize: 11 },
+  statLabel: { fontSize: 10, textAlign: 'center' },
+
   description:  { fontSize: 15, lineHeight: 22 },
-  ingRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9 },
-  ingName:      { fontSize: 14, flex: 1 },
-  ingQty:       { fontSize: 14, fontWeight: '500' },
+  
+  ingredientsContainer: { 
+    borderRadius: RADIUS.md, 
+    borderWidth: 1, 
+    padding: SPACING.sm, 
+    marginTop: SPACING.xs 
+  },
+  instructionsContainer: { 
+    borderRadius: RADIUS.md, 
+    borderWidth: 1, 
+    padding: SPACING.md, 
+    marginTop: SPACING.xs 
+  },
+
+  ingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    gap: 10,
+  },
+  ingIcon: { 
+    width: 28, 
+    height: 28, 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    flexShrink: 0 
+  },
+  ingName: { fontSize: 14, fontWeight: '500' },
+  ingQty:  { fontSize: 12, marginTop: 1 },
+
   instructions: { fontSize: 15, lineHeight: 24 },
-  stars:        { flexDirection: 'row', gap: 8, justifyContent: 'center', paddingVertical: SPACING.sm },
-  removeRating:     { alignItems: 'center', marginTop: 4 },
-  removeRatingText: { fontSize: 12 },
+
+  ratingSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+  },
+  ratingTitle: { 
+    fontSize: 14, 
+    fontWeight: '600' 
+  },
+  starsCompact: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  removeRatingCompact: { 
+    marginLeft: SPACING.sm 
+  },
+  removeRatingTextCompact: { 
+    fontSize: 11, 
+    textDecorationLine: 'underline' 
+  },
+  backButton: {
+    width: 40, 
+    height: 40,
+    alignItems: 'center', 
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
 });

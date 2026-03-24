@@ -37,7 +37,7 @@ export default function ActionMenu({
   const filtered = actions.filter(a => !a.disabled);
 
   return (
-    <View>
+    <View style={{ marginRight: 16 }}>
       <TouchableOpacity
         style={[
           styles.trigger,

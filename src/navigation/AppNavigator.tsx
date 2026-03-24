@@ -41,12 +41,11 @@ const DRAWER_W = Math.min(260, SCREEN_W * 0.72);
 const Tab   = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// ─── Items del menú lateral ───────────────────────────────────────────────────
+// ─── Menu items — Permissions removed (accessible via Settings) ───────────────
 const MENU_ITEMS = [
-  { key: 'Recipes',     label: 'Recipes',     icon: 'restaurant-outline' as const, iconOn: 'restaurant'     as const },
-  { key: 'Users',       label: 'Users',       icon: 'people-outline'     as const, iconOn: 'people'         as const, adminOnly: true },
-  { key: 'Settings',    label: 'Settings',    icon: 'settings-outline'   as const, iconOn: 'settings'       as const, adminOnly: true },
-  { key: 'Permissions', label: 'Permissions', icon: 'key-outline'        as const, iconOn: 'key'            as const, adminOnly: true },
+  { key: 'Recipes',  label: 'Recipes',  icon: 'restaurant-outline' as const, iconOn: 'restaurant'   as const },
+  { key: 'Users',    label: 'Users',    icon: 'people-outline'     as const, iconOn: 'people'       as const, adminOnly: true },
+  { key: 'Settings', label: 'Settings', icon: 'settings-outline'   as const, iconOn: 'settings'     as const, adminOnly: true },
 ];
 
 // ─── Slide menu ───────────────────────────────────────────────────────────────
@@ -114,7 +113,7 @@ function SlideMenu({
           paddingHorizontal: SPACING.md,
           flex: 1,
         }}>
-          {/* Header del menú */}
+          {/* Menu header */}
           <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
             <View style={[styles.menuDot, { backgroundColor: colors.primary }]} />
             <Text style={[styles.menuHeaderText, { color: colors.textPrimary }]}>Navigation</Text>
@@ -132,7 +131,11 @@ function SlideMenu({
                       ? { backgroundColor: colors.primaryDim, borderColor: `${colors.primary}44` }
                       : { borderColor: 'transparent' },
                   ]}
-                  onPress={() => { onClose(); setTimeout(() => onNavigate(item.key), 160); }}
+                  onPress={() => { 
+                    onClose(); 
+                    // Prevent multiple rapid taps
+                    setTimeout(() => onNavigate(item.key), 200); 
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={[
@@ -173,7 +176,7 @@ function TabIcon({ name, focused, color, primaryDim }: {
   );
 }
 
-// ─── Header compartido ────────────────────────────────────────────────────────
+// ─── Shared header options ────────────────────────────────────────────────────
 function useSharedHeaderOptions(onMenuOpen: () => void, onDebug: () => void) {
   const { colors }       = useTheme();
   const { isSuperAdmin } = useAuth();
@@ -217,7 +220,7 @@ function useSharedHeaderOptions(onMenuOpen: () => void, onDebug: () => void) {
   };
 }
 
-// ─── Main tabs — solo Dashboard ───────────────────────────────────────────────
+// ─── Main tabs ────────────────────────────────────────────────────────────────
 function MainTabs({ onMenuOpen, onTabFocus, onDebug }: {
   onMenuOpen: () => void;
   onTabFocus: (key: string) => void;
@@ -253,7 +256,58 @@ function MainTabs({ onMenuOpen, onTabFocus, onDebug }: {
           ),
         }}
       />
-      {/* Profile — oculto, se accede desde HeaderAvatar */}
+      <Tab.Screen
+        name="Recipes"
+        component={RecipesScreen}
+        listeners={{ focus: () => onTabFocus('Recipes') }}
+        options={{ tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="Users"
+        component={UsersScreen}
+        listeners={{ focus: () => onTabFocus('Users') }}
+        options={{ tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        listeners={{ focus: () => onTabFocus('Settings') }}
+        options={{ tabBarButton: () => null }}
+      />
+      
+      {/* Detail screens - hidden from tab bar */}
+      <Tab.Screen
+        name="UserDetail"
+        component={UserDetailScreen}
+        listeners={{ focus: () => onTabFocus('Users') }}
+        options={{ tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="UserForm"
+        component={UserFormScreen}
+        listeners={{ focus: () => onTabFocus('Users') }}
+        options={{ tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="UserPassword"
+        component={UserPasswordScreen}
+        listeners={{ focus: () => onTabFocus('Users') }}
+        options={{ tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="RecipeDetail"
+        component={RecipeDetailScreen}
+        listeners={{ focus: () => onTabFocus('Recipes') }}
+        options={{ tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="RecipeForm"
+        component={RecipeFormScreen}
+        listeners={{ focus: () => onTabFocus('Recipes') }}
+        options={{ tabBarButton: () => null }}
+      />
+      
+      {/* Profile — hidden, accessed from HeaderAvatar */}
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
@@ -273,6 +327,7 @@ function AuthenticatedApp() {
   const [menuOpen,  setMenuOpen]  = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [activeKey, setActiveKey] = useState('Dashboard');
+  const [navigating, setNavigating] = useState(false);
 
   useEffect(() => {
     registerDebugBridge({
@@ -283,16 +338,29 @@ function AuthenticatedApp() {
   }, [debug]);
 
   const handleNavigate = (screen: string) => {
+    if (navigating) return; // Prevent multiple navigations
+    
+    setNavigating(true);
     setActiveKey(screen);
-    if (screen === 'Dashboard') {
+    
+    try {
+      navigation.navigate('Tabs', { screen });
+    } catch (error) {
+      console.warn('Navigation error:', error);
+      // Fallback: reset to dashboard if navigation fails
       navigation.navigate('Tabs', { screen: 'Dashboard' });
-    } else {
-      navigation.navigate(screen);
+    } finally {
+      // Reset navigation lock after a delay
+      setTimeout(() => setNavigating(false), 500);
     }
   };
 
   const sharedHeader = useSharedHeaderOptions(
-    () => setMenuOpen(true),
+    () => {
+      if (!menuOpen && !navigating) {
+        setMenuOpen(true);
+      }
+    },
     () => setDebugOpen(true),
   );
 
@@ -313,27 +381,23 @@ function AuthenticatedApp() {
           cardStyle: { backgroundColor: colors.background },
         }}
       >
+        {/* Main tabs screen — always visible with bottom bar */}
         <Stack.Screen name="Tabs">
           {() => (
             <MainTabs
-              onMenuOpen={() => setMenuOpen(true)}
+              onMenuOpen={() => {
+                if (!menuOpen && !navigating) {
+                  setMenuOpen(true);
+                }
+              }}
               onTabFocus={setActiveKey}
               onDebug={() => setDebugOpen(true)}
             />
           )}
         </Stack.Screen>
 
-        <Stack.Screen name="Recipes"     component={RecipesScreen}     options={stackScreenOptions} />
-        <Stack.Screen name="Users"       component={UsersScreen}       options={stackScreenOptions} />
-        <Stack.Screen name="Settings"    component={SettingsScreen}    options={stackScreenOptions} />
+        {/* Full-screen stack screens */}
         <Stack.Screen name="Permissions" component={PermissionsScreen} options={stackScreenOptions} />
-
-        <Stack.Screen name="UserDetail"   component={UserDetailScreen}   options={stackScreenOptions} />
-        <Stack.Screen name="UserForm"     component={UserFormScreen}     options={stackScreenOptions} />
-        <Stack.Screen name="UserPassword" component={UserPasswordScreen} options={stackScreenOptions} />
-
-        <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={stackScreenOptions} />
-        <Stack.Screen name="RecipeForm"   component={RecipeFormScreen}   options={stackScreenOptions} />
       </Stack.Navigator>
 
       <SlideMenu

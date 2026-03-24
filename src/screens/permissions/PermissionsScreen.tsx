@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl, Platform,
+  TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
@@ -93,15 +93,12 @@ export default function PermissionsScreen() {
   const [permissions, setPermissions] = useState<Permission[]>(buildMockPermissions);
   const [selectedRole, setSelectedRole] = useState<string>(ROLES[0]);
   const [refreshing, setRefreshing]     = useState(false);
-  const [saving, setSaving]             = useState<string | null>(null);   // id being saved
+  const [saving, setSaving]             = useState<string | null>(null);
 
-  // ── Filtered list ─────────────────────────────────────────────────────────
   const filtered = permissions.filter(p => p.role === selectedRole);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate network request
     await new Promise(r => setTimeout(r, 900));
     setPermissions(buildMockPermissions());
     setRefreshing(false);
@@ -116,24 +113,11 @@ export default function PermissionsScreen() {
 
   const saveRow = useCallback(async (permId: string) => {
     setSaving(permId);
-    // Simulate API call
     await new Promise(r => setTimeout(r, 700));
     setSaving(null);
     toast.success('Permission saved', 'Changes applied successfully.');
   }, [toast]);
 
-  const resetRole = useCallback(async () => {
-    setPermissions(prev => {
-      const fresh = buildMockPermissions();
-      return prev.map(p => {
-        if (p.role !== selectedRole) return p;
-        return fresh.find(f => f.id === p.id) ?? p;
-      });
-    });
-    toast.info(`${selectedRole} permissions reset to defaults`);
-  }, [selectedRole, toast]);
-
-  // ── Access guard ──────────────────────────────────────────────────────────
   if (!isSuperAdmin) {
     return (
       <View style={[styles.blocked, { backgroundColor: colors.background }]}>
@@ -148,7 +132,7 @@ export default function PermissionsScreen() {
 
   return (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
-      {/* ── Role selector ── */}
+      {/* ── Role selector — no reset button ── */}
       <View style={[styles.roleBar, {
         backgroundColor: colors.surface,
         borderBottomColor: colors.border,
@@ -180,15 +164,6 @@ export default function PermissionsScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-
-        {/* Reset button */}
-        <TouchableOpacity
-          onPress={resetRole}
-          style={[styles.resetBtn, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
-          activeOpacity={0.75}
-        >
-          <Ionicons name="refresh-outline" size={15} color={colors.textSecondary} />
-        </TouchableOpacity>
       </View>
 
       {/* ── Summary badge ── */}
@@ -203,7 +178,7 @@ export default function PermissionsScreen() {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -239,7 +214,6 @@ export default function PermissionsScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   flex: { flex: 1 },
 
@@ -251,10 +225,7 @@ const styles = StyleSheet.create({
   blockedSub:   { fontSize: 14, textAlign: 'center', marginTop: 4 },
 
   roleBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderBottomWidth: 1,
-    paddingRight: SPACING.sm,
   },
   roleBarContent: {
     paddingHorizontal: SPACING.md,
@@ -270,12 +241,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   roleChipText: { fontSize: 12, fontWeight: '700' },
-
-  resetBtn: {
-    width: 32, height: 32, borderRadius: RADIUS.sm,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, marginRight: SPACING.xs,
-  },
 
   summaryBar: {
     flexDirection: 'row',

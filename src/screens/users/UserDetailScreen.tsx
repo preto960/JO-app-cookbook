@@ -10,7 +10,7 @@ import { userService } from '../../services/api';
 import { useApiCall } from '../../hooks/useApiCall';
 import {
   StatusBadge, EmptyState, ThemedCard, InfoRow,
-  SkeletonList, ActionMenu,
+  SkeletonList,
 } from '../../components';
 import { SPACING, RADIUS } from '../../constants/theme';
 
@@ -40,25 +40,33 @@ export default function UserDetailScreen({ navigation, route }: Props) {
 
   useEffect(() => { loadUser(userId); }, [userId]);
 
+  // Set header title only — no headerRight ActionMenu (it was misaligned)
   useEffect(() => {
     if (!user) return;
     navigation.setOptions({
       title: `${user.firstName} ${user.lastName}`,
-      headerRight: () => (
-        <ActionMenu actions={[
-          { label: 'Edit', icon: 'pencil-outline', onPress: () => navigation.navigate('UserForm', { userId }) },
-          { label: 'Change password', icon: 'key-outline', onPress: () => navigation.navigate('UserPassword', { userId }) },
-          { label: user.isActive ? 'Deactivate' : 'Activate', icon: 'power-outline', onPress: () => toggleStatus(userId) },
-          { label: 'Delete', icon: 'trash-outline', danger: true, onPress: () => deleteUser(userId) },
-        ]} />
-      ),
     });
   }, [user]);
 
-  if (loading) return <View style={[styles.container, { backgroundColor: colors.background }]}><SkeletonList count={6} /></View>;
-  if (error || !user) return (
-    <EmptyState type="error" title="User not found" description={error ?? undefined} actionLabel="Go back" onAction={() => navigation.goBack()} />
-  );
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <SkeletonList count={6} />
+      </View>
+    );
+  }
+
+  if (error || !user) {
+    return (
+      <EmptyState
+        type="error"
+        title="User not found"
+        description={error ?? undefined}
+        actionLabel="Go back"
+        onAction={() => navigation.goBack()}
+      />
+    );
+  }
 
   const initial = user.firstName?.[0]?.toUpperCase() ?? 'U';
 
@@ -66,7 +74,7 @@ export default function UserDetailScreen({ navigation, route }: Props) {
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={true}
     >
       {/* Avatar section */}
       <View style={styles.avatarSection}>
@@ -90,7 +98,7 @@ export default function UserDetailScreen({ navigation, route }: Props) {
 
       {/* Basic info */}
       <ThemedCard title="Account info">
-        <InfoRow label="User ID"    value={user.id} />
+        <InfoRow label="User ID"    value={user.id.toString()} />
         <InfoRow label="Role"       value={user.role} />
         <InfoRow label="Status"     value={user.isActive ? 'Active' : 'Inactive'} />
         <InfoRow label="Created"    value={new Date(user.createdAt).toLocaleDateString()} />
@@ -115,13 +123,39 @@ export default function UserDetailScreen({ navigation, route }: Props) {
         <TouchableOpacity
           style={[styles.btn, { backgroundColor: colors.primaryDim, borderColor: colors.primary }]}
           onPress={() => navigation.navigate('UserForm', { userId })}
+          activeOpacity={0.8}
         >
           <Ionicons name="pencil-outline" size={16} color={colors.primary} />
           <Text style={[styles.btnLabel, { color: colors.primary }]}>Edit user</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.btn, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
+          onPress={() => navigation.navigate('UserPassword', { userId })}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="key-outline" size={16} color={colors.textSecondary} />
+          <Text style={[styles.btnLabel, { color: colors.textSecondary }]}>Password</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Secondary actions */}
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.btn, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
+          onPress={() => toggleStatus(userId)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={user.isActive ? 'pause-circle-outline' : 'play-circle-outline'} size={16} color={colors.textSecondary} />
+          <Text style={[styles.btnLabel, { color: colors.textSecondary }]}>
+            {user.isActive ? 'Deactivate' : 'Activate'}
+          </Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.btn, { backgroundColor: `${colors.danger}15`, borderColor: colors.danger }]}
           onPress={() => deleteUser(userId)}
+          activeOpacity={0.8}
         >
           <Ionicons name="trash-outline" size={16} color={colors.danger} />
           <Text style={[styles.btnLabel, { color: colors.danger }]}>Delete</Text>
@@ -136,14 +170,23 @@ export default function UserDetailScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content:   { padding: SPACING.lg },
+
   avatarSection: { alignItems: 'center', paddingVertical: SPACING.lg, gap: 6 },
-  avatarImg: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, marginBottom: SPACING.sm },
-  avatarFallback: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, marginBottom: SPACING.sm, alignItems: 'center', justifyContent: 'center' },
+  avatarImg: {
+    width: 88, height: 88, borderRadius: 44,
+    borderWidth: 3, marginBottom: SPACING.sm,
+  },
+  avatarFallback: {
+    width: 88, height: 88, borderRadius: 44,
+    borderWidth: 3, marginBottom: SPACING.sm,
+    alignItems: 'center', justifyContent: 'center',
+  },
   avatarInitial: { fontSize: 32, fontWeight: '800' },
   displayName:   { fontSize: 22, fontWeight: '800' },
   displayEmail:  { fontSize: 14 },
   badgeRow:      { flexDirection: 'row', gap: 8, marginTop: 4 },
-  actions:       { flexDirection: 'row', gap: 12, marginTop: SPACING.sm },
+
+  actions: { flexDirection: 'row', gap: 12, marginBottom: SPACING.sm },
   btn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, height: 44, borderRadius: RADIUS.md, borderWidth: 1,

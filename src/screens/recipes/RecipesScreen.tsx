@@ -2,22 +2,29 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  RefreshControl, Image, TextInput, Platform,
+  RefreshControl, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { recipeService } from '../../services/api';
 import { usePagination } from '../../hooks/usePagination';
 import { useApiCall } from '../../hooks/useApiCall';
-import { StatusBadge, EmptyState, SkeletonCard, Pagination } from '../../components';
+import { StatusBadge, EmptyState, SkeletonCard, SkeletonList, Pagination, ActionMenu, ModalSheet } from '../../components';
+import SharedFilterBar from '../../components/SharedFilterBar';
 import { SPACING, RADIUS } from '../../constants/theme';
-import type { Recipe, RecipeCategory, FilterOption } from '../../types/api.types';
+import type { Recipe, RecipeCategory } from '../../types/api.types';
 
 type Tab = 'explore' | 'mine' | 'favourites';
 
-const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
+const DIFFICULTY_CHIPS = [
+  { label: 'All',    value: null },
+  { label: 'Easy',   value: 'easy' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Hard',   value: 'hard' },
+];
 
 interface Props { navigation: any }
 
@@ -31,9 +38,22 @@ export default function RecipesScreen({ navigation }: Props) {
   const [difficulty, setDifficulty] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<RecipeCategory[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  
+  // Local filter states for modal
+  const [tempDifficulty, setTempDifficulty] = useState<string | null>(null);
+  const [tempCategoryId, setTempCategoryId] = useState<string | null>(null);
 
   const { execute: loadCategories } = useApiCall(recipeService.getCategories, {
     onSuccess: (cats) => setCategories(Array.isArray(cats) ? cats : []),
+  });
+
+  const { execute: togglePublish } = useApiCall(recipeService.togglePublish, {
+    onError: (e) => toast.error('Action failed', e),
+  });
+
+  const { execute: deleteRecipe } = useApiCall(recipeService.delete, {
+    onError: (e) => toast.error('Delete failed', e),
   });
 
   useEffect(() => { loadCategories(); }, []);
@@ -46,24 +66,40 @@ export default function RecipesScreen({ navigation }: Props) {
 
   const {
     items: rawItems, loading, page, totalPages, total,
-    loadPage, refresh, setParams,
+    loadPage, refresh, refreshWithParams, setParams,
   } = usePagination<Recipe, any>({
     apiFunction: apiFn as any,
     pageSize: 12,
     onError: (e) => toast.error('Load failed', e),
   });
 
-  const items = Array.isArray(rawItems) ? rawItems : [];
+  // Refresh when screen comes back into focus (after editing)
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  // Filter published recipes on client side for explore tab as fallback
+  const items = Array.isArray(rawItems) 
+    ? (tab === 'explore' ? rawItems.filter(recipe => recipe.isPublished) : rawItems)
+    : [];
 
   useEffect(() => {
-    setParams({
-      ...(search     ? { search }                            : {}),
-      ...(difficulty ? { difficulty: difficulty.toLowerCase() } : {}),
-      ...(categoryId ? { categoryId }                        : {}),
-    });
-  }, [search, difficulty, categoryId]);
-
-  useEffect(() => { refresh(); }, [search, difficulty, categoryId, tab]);
+    const updateParams = async () => {
+      const params = {
+        ...(search     ? { search }                               : {}),
+        ...(difficulty ? { difficulty }                           : {}),
+        ...(categoryId ? { categoryId }                           : {}),
+        ...(tab === 'explore' ? { isPublished: true }             : {}),
+      };
+      
+      const updatedParams = await setParams(params);
+      refreshWithParams(updatedParams);
+    };
+    
+    updateParams();
+  }, [search, difficulty, categoryId, tab]);
 
   const handleTabChange = (t: Tab) => {
     setTab(t);
@@ -72,10 +108,49 @@ export default function RecipesScreen({ navigation }: Props) {
     setCategoryId(null);
   };
 
+  // Build category chips dynamically
+  const categoryChips = [
+    { label: 'All categories', value: null },
+    ...categories.map(c => ({ label: c.name, value: c.id })),
+  ];
+
+  const handleChipChange = (groupIndex: number, value: string | null) => {
+    if (groupIndex === 0) setDifficulty(value);
+    else if (groupIndex === 1) setCategoryId(value);
+  };
+
+  const handleTogglePublish = useCallback(async (recipe: Recipe) => {
+    const result = await togglePublish(recipe.id);
+    if (result) {
+      toast.success(result.isPublished ? 'Recipe published' : 'Recipe unpublished');
+      refresh();
+    }
+  }, [togglePublish, refresh]);
+
+  const handleDelete = useCallback(async (recipe: Recipe) => {
+    await deleteRecipe(recipe.id);
+    toast.success('Recipe deleted');
+    refresh();
+  }, [deleteRecipe, refresh]);
+
+  const applyFilters = useCallback(() => {
+    setDifficulty(tempDifficulty);
+    setCategoryId(tempCategoryId);
+    setFiltersOpen(false);
+  }, [tempDifficulty, tempCategoryId]);
+
+  const clearFilters = useCallback(() => {
+    setTempDifficulty(null);
+    setTempCategoryId(null);
+  }, []);
+
+  // For mine tab: show list view (like users)
+  const showListView = tab === 'mine' || tab === 'favourites';
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
-      {/* Tabs compactos */}
+      {/* Tabs */}
       <View style={[styles.tabRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         {(['explore', 'mine', 'favourites'] as Tab[]).map(t => (
           <TouchableOpacity
@@ -90,86 +165,34 @@ export default function RecipesScreen({ navigation }: Props) {
         ))}
       </View>
 
-      {/* Buscador + botón nuevo */}
-      <View style={[styles.searchRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <View style={[styles.searchInput, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
-          <Ionicons name="search-outline" size={15} color={colors.textMuted} />
-          <TextInput
-            style={[styles.input, { color: colors.textPrimary },
-              Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}]}
-            placeholder="Search recipes…"
-            placeholderTextColor={colors.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={14} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-        {tab === 'mine' && (
-          <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.navigate('RecipeForm')}
-          >
-            <Ionicons name="add" size={18} color={colors.background} />
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Filter bar — search + filter button + action */}
+      <SharedFilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search recipes…"
+        onAction={tab === 'mine' ? () => navigation.navigate('RecipeForm') : undefined}
+        onFilter={() => {
+          // Sync temp states with current filters
+          setTempDifficulty(difficulty);
+          setTempCategoryId(categoryId);
+          setFiltersOpen(true);
+        }}
+      />
 
-      {/* Filtros — solo en Explore */}
-      {tab === 'explore' && (
-        <View style={[styles.filtersRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-            <TouchableOpacity
-              style={[styles.chip, !difficulty && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-              onPress={() => setDifficulty(null)}
-            >
-              <Text style={[styles.chipText, { color: !difficulty ? colors.background : colors.textSecondary }]}>
-                All
-              </Text>
-            </TouchableOpacity>
-            {DIFFICULTIES.map(d => {
-              const active = difficulty === d;
-              return (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.chip, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                  onPress={() => setDifficulty(active ? null : d)}
-                >
-                  <Text style={[styles.chipText, { color: active ? colors.background : colors.textSecondary }]}>{d}</Text>
-                </TouchableOpacity>
-              );
-            })}
-            {categories.map(c => {
-              const active = categoryId === c.id;
-              return (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.chip, active && { backgroundColor: colors.accent, borderColor: colors.accent }]}
-                  onPress={() => setCategoryId(active ? null : c.id)}
-                >
-                  <Text style={[styles.chipText, { color: active ? colors.background : colors.textSecondary }]}>{c.name}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Lista */}
+      {/* List */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={true}
         refreshControl={
-          <RefreshControl refreshing={loading && items.length > 0} onRefresh={refresh} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={loading && items.length > 0}
+            onRefresh={refresh}
+            tintColor={colors.primary}
+          />
         }
       >
-        {/* Header sección */}
+        {/* Section header */}
         <View style={styles.sectionRow}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
             {tab === 'explore' ? 'Recipes' : tab === 'mine' ? 'My recipes' : 'Favourites'}
@@ -180,9 +203,13 @@ export default function RecipesScreen({ navigation }: Props) {
         </View>
 
         {loading && items.length === 0 ? (
-          <View style={styles.grid}>
-            {[1, 2, 3, 4].map(i => <View key={i} style={styles.gridItem}><SkeletonCard /></View>)}
-          </View>
+          showListView ? (
+            <SkeletonList count={5} />
+          ) : (
+            <View style={styles.grid}>
+              {[1, 2, 3, 4].map(i => <View key={i} style={styles.gridItem}><SkeletonCard /></View>)}
+            </View>
+          )
         ) : items.length === 0 ? (
           <EmptyState
             type={search ? 'search' : 'empty'}
@@ -194,16 +221,34 @@ export default function RecipesScreen({ navigation }: Props) {
               : undefined
             }
           />
+        ) : showListView ? (
+          /* List view for Mine / Favourites */
+          <View style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {items.map((recipe, idx) => (
+                <RecipeListRow
+                  key={recipe.id}
+                  recipe={recipe}
+                  isLast={idx === items.length - 1}
+                  isOwner={(recipe.createdBy?.id || recipe.creator?.id) === user?.id?.toString()}
+                  showEdit={tab === 'mine'}
+                  colors={colors}
+                  user={user}
+                  onPress={() => navigation.navigate('RecipeDetail', { recipeId: recipe.id })}
+                  onEdit={() => navigation.navigate('RecipeForm', { recipeId: recipe.id })}
+                  onTogglePublish={() => handleTogglePublish(recipe)}
+                  onDelete={() => handleDelete(recipe)}
+                />
+            ))}
+          </View>
         ) : (
+          /* Grid view for Explore */
           <View style={styles.grid}>
             {items.map(recipe => (
               <View key={recipe.id} style={styles.gridItem}>
                 <RecipeCard
                   recipe={recipe}
-                  showActions={tab === 'mine' && recipe.createdBy?.id === user?.id?.toString()}
-                  onPress={() => navigation.navigate('RecipeDetail', { recipeId: recipe.id })}
-                  onEdit={() => navigation.navigate('RecipeForm', { recipeId: recipe.id })}
                   colors={colors}
+                  onPress={() => navigation.navigate('RecipeDetail', { recipeId: recipe.id })}
                 />
               </View>
             ))}
@@ -213,16 +258,186 @@ export default function RecipesScreen({ navigation }: Props) {
         <Pagination page={page} totalPages={totalPages} total={total} loading={loading} onPage={loadPage} />
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
+
+      {/* Filters Modal */}
+      <ModalSheet 
+        visible={filtersOpen} 
+        onClose={() => setFiltersOpen(false)} 
+        title="Filters" 
+        compact
+        primaryLabel="Apply"
+        onPrimary={applyFilters}
+      >
+        {/* Difficulty Filter */}
+        <View style={styles.filterSection}>
+          <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>DIFFICULTY</Text>
+          <View style={styles.filterChips}>
+            {DIFFICULTY_CHIPS.map((chip) => (
+              <TouchableOpacity
+                key={chip.value ?? 'all'}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: tempDifficulty === chip.value ? colors.primaryDim : colors.surfaceElevated,
+                    borderColor: tempDifficulty === chip.value ? colors.primary : colors.border,
+                  }
+                ]}
+                onPress={() => setTempDifficulty(chip.value)}
+              >
+                <Text style={[
+                  styles.filterChipText,
+                  { color: tempDifficulty === chip.value ? colors.primary : colors.textPrimary }
+                ]}>
+                  {chip.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Category Filter */}
+        <View style={styles.filterSection}>
+          <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>CATEGORY</Text>
+          <View style={styles.filterChips}>
+            {categoryChips.map((chip) => (
+              <TouchableOpacity
+                key={chip.value ?? 'all'}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: tempCategoryId === chip.value ? colors.primaryDim : colors.surfaceElevated,
+                    borderColor: tempCategoryId === chip.value ? colors.primary : colors.border,
+                  }
+                ]}
+                onPress={() => setTempCategoryId(chip.value)}
+              >
+                <Text style={[
+                  styles.filterChipText,
+                  { color: tempCategoryId === chip.value ? colors.primary : colors.textPrimary }
+                ]}>
+                  {chip.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Clear Filters */}
+        <TouchableOpacity 
+          style={[styles.clearButton, { borderColor: colors.border }]}
+          onPress={clearFilters}
+        >
+          <Text style={[styles.clearButtonText, { color: colors.textSecondary }]}>Clear all filters</Text>
+        </TouchableOpacity>
+      </ModalSheet>
     </View>
   );
 }
 
-// ─── Recipe Card ──────────────────────────────────────────────────────────────
-function RecipeCard({
-  recipe, onPress, onEdit, showActions, colors,
+// ─── Recipe List Row (like user row) ─────────────────────────────────────────
+function RecipeListRow({
+  recipe, isLast, isOwner, showEdit, colors, user, onPress, onEdit, onTogglePublish, onDelete,
 }: {
-  recipe: Recipe; onPress: () => void; onEdit: () => void;
-  showActions: boolean; colors: any;
+  recipe: Recipe; isLast: boolean; isOwner: boolean; showEdit: boolean;
+  colors: any; user: any; onPress: () => void; onEdit: () => void; 
+  onTogglePublish: () => void; onDelete: () => void;
+}) {
+  const menuActions = [];
+  
+  if (showEdit) {
+    menuActions.push(
+      { label: 'Edit', icon: 'pencil-outline' as const, onPress: onEdit },
+      { 
+        label: recipe.isPublished ? 'Unpublish' : 'Publish', 
+        icon: recipe.isPublished ? 'eye-off-outline' as const : 'eye-outline' as const, 
+        onPress: onTogglePublish 
+      },
+      { label: 'Delete', icon: 'trash-outline' as const, danger: true, onPress: onDelete }
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.listRow,
+        !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      {/* Cover thumbnail */}
+      {recipe.coverImage ? (
+        <Image source={{ uri: recipe.coverImage }} style={styles.listThumb} resizeMode="cover" />
+      ) : (
+        <View style={[styles.listThumbPlaceholder, { backgroundColor: colors.surfaceElevated }]}>
+          <Ionicons name="restaurant-outline" size={18} color={colors.textMuted} />
+        </View>
+      )}
+
+      {/* Info */}
+      <View style={styles.listInfo}>
+        <Text style={[styles.listTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+          {recipe.title}
+        </Text>
+        <View style={styles.listMeta}>
+          {recipe.prepTimeMin != null && (
+            <View style={styles.metaItem}>
+              <Ionicons name="time-outline" size={11} color={colors.textMuted} />
+              <Text style={[styles.metaText, { color: colors.textSecondary }]}>{recipe.prepTimeMin}m</Text>
+            </View>
+          )}
+          {recipe.category && (
+            <Text style={[styles.metaText, { color: colors.textSecondary }]}>· {recipe.category.name}</Text>
+          )}
+        </View>
+      </View>
+
+      {/* Right side */}
+      <View style={styles.listRight}>
+        <View style={styles.badgesCol}>
+          <StatusBadge label={recipe.difficulty} auto size="sm" />
+          {!recipe.isPublished && <StatusBadge label="draft" auto size="sm" />}
+          {recipe.isFavourited && <Ionicons name="heart" size={12} color={colors.danger} />}
+        </View>
+        {menuActions.length > 0 && (
+          <ActionMenu actions={menuActions} />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Rating Star Component ────────────────────────────────────────────────────
+function RatingStar({ rating, colors }: { rating: number; colors: any }) {
+  // Convert rating (0-5) to percentage (0-100%)
+  const percentage = Math.min(Math.max(rating / 5 * 100, 0), 100);
+  
+  return (
+    <View style={styles.starContainer}>
+      {/* Background star (empty) */}
+      <Ionicons 
+        name="star-outline" 
+        size={14} 
+        color={colors.textMuted} 
+        style={styles.starBackground}
+      />
+      {/* Foreground star (filled) with clipping */}
+      <View style={[styles.starForeground, { width: `${percentage}%` }]}>
+        <Ionicons 
+          name="star" 
+          size={14} 
+          color="#F59E0B" 
+        />
+      </View>
+    </View>
+  );
+}
+
+// ─── Recipe Card (grid) ───────────────────────────────────────────────────────
+function RecipeCard({
+  recipe, onPress, colors,
+}: {
+  recipe: Recipe; onPress: () => void; colors: any;
 }) {
   return (
     <TouchableOpacity
@@ -230,7 +445,6 @@ function RecipeCard({
       onPress={onPress}
       activeOpacity={0.85}
     >
-      {/* Cover */}
       {recipe.coverImage ? (
         <Image source={{ uri: recipe.coverImage }} style={styles.coverImg} resizeMode="cover" />
       ) : (
@@ -238,14 +452,10 @@ function RecipeCard({
           <Ionicons name="restaurant-outline" size={26} color={colors.textMuted} />
         </View>
       )}
-
-      {/* Body */}
       <View style={styles.cardBody}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={2}>
           {recipe.title}
         </Text>
-
-        {/* Meta row */}
         <View style={styles.cardMeta}>
           {recipe.prepTimeMin != null && (
             <View style={styles.metaItem}>
@@ -259,31 +469,21 @@ function RecipeCard({
               <Text style={[styles.metaText, { color: colors.textSecondary }]}>{recipe.servings}</Text>
             </View>
           )}
-          {typeof recipe.avgRating === 'number' && (
-            <View style={styles.metaItem}>
-              <Ionicons name="star" size={11} color="#F59E0B" />
-              <Text style={[styles.metaText, { color: colors.textSecondary }]}>{recipe.avgRating.toFixed(1)}</Text>
-            </View>
-          )}
         </View>
-
-        {/* Footer */}
         <View style={styles.cardFooter}>
           <View style={styles.cardBadges}>
             <StatusBadge label={recipe.difficulty} auto size="sm" />
             {!recipe.isPublished && <StatusBadge label="draft" auto size="sm" />}
             {recipe.isFavourited && <Ionicons name="heart" size={12} color={colors.danger} />}
           </View>
-
-          {/* Botón editar en mis recetas */}
-          {showActions && (
-            <TouchableOpacity
-              onPress={(e) => { e.stopPropagation?.(); onEdit(); }}
-              style={[styles.editBtn, { backgroundColor: colors.surfaceElevated }]}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Ionicons name="pencil-outline" size={13} color={colors.textSecondary} />
-            </TouchableOpacity>
+          {/* Rating star - show only if there are ratings */}
+          {recipe.ratingCount && Number(recipe.ratingCount) > 0 && recipe.averageRating && (
+            <View style={styles.cardRating}>
+              <RatingStar rating={recipe.averageRating} colors={colors} />
+              <Text style={[styles.cardRatingText, { color: colors.textSecondary }]}>
+                {Math.round((recipe.averageRating / 5) * 100)}%
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -302,35 +502,6 @@ const styles = StyleSheet.create({
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  searchRow: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-  },
-  searchInput: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
-    height: 38, borderRadius: RADIUS.md, borderWidth: 1,
-    paddingHorizontal: SPACING.sm, gap: 6,
-  },
-  input: { flex: 1, fontSize: 13 },
-  addBtn: {
-    width: 38, height: 38, borderRadius: RADIUS.md,
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  filtersRow: { borderBottomWidth: 1 },
-  chips: {
-    flexDirection: 'row', gap: 6,
-    paddingHorizontal: SPACING.md, paddingVertical: 6,
-  },
-  chip: {
-    borderRadius: RADIUS.full, borderWidth: 1,
-    borderColor: 'transparent',
-    paddingHorizontal: 11, paddingVertical: 4,
-    backgroundColor: 'transparent',
-  },
-  chipText: { fontSize: 12, fontWeight: '600' },
-
   scroll:      { flex: 1 },
   listContent: { padding: SPACING.md },
 
@@ -342,7 +513,32 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '700' },
   sectionCount: { fontSize: 12 },
 
-  // Grid de 2 columnas
+  // List view (mine/favourites)
+  listCard: {
+    borderRadius: RADIUS.lg, borderWidth: 1,
+    overflow: 'hidden', marginBottom: SPACING.md,
+  },
+  listRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: SPACING.md, paddingVertical: 12,
+    gap: 10,
+  },
+  listThumb: {
+    width: 44, height: 44, borderRadius: RADIUS.sm,
+    flexShrink: 0,
+  },
+  listThumbPlaceholder: {
+    width: 44, height: 44, borderRadius: RADIUS.sm,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  listInfo:  { flex: 1, minWidth: 0 },
+  listTitle: { fontSize: 14, fontWeight: '600' },
+  listMeta:  { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  listRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  badgesCol: { gap: 3, alignItems: 'flex-end' },
+
+  // Grid view (explore)
   grid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%' },
 
@@ -359,8 +555,67 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardBadges: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1, flexWrap: 'wrap' },
-  editBtn: {
-    width: 24, height: 24, borderRadius: 6,
-    alignItems: 'center', justifyContent: 'center',
+  cardRating: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 4,
+    marginLeft: 8,
+  },
+  cardRatingText: { 
+    fontSize: 11, 
+    fontWeight: '600' 
+  },
+
+  // Rating Star
+  starContainer: { 
+    position: 'relative', 
+    width: 14, 
+    height: 14 
+  },
+  starBackground: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0 
+  },
+  starForeground: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    overflow: 'hidden' 
+  },
+
+  // Filter Modal
+  filterSection: { marginBottom: SPACING.lg },
+  filterLabel: { 
+    fontSize: 12, 
+    fontWeight: '600', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.7, 
+    marginBottom: SPACING.sm 
+  },
+  filterChips: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 8 
+  },
+  filterChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+  },
+  filterChipText: { 
+    fontSize: 14, 
+    fontWeight: '500' 
+  },
+  clearButton: {
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    marginTop: SPACING.md,
+    alignItems: 'center',
+  },
+  clearButtonText: { 
+    fontSize: 14, 
+    fontWeight: '500' 
   },
 });

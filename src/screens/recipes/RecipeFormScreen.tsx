@@ -79,12 +79,21 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
   });
 
   const { execute: createRecipe, loading: creating } = useApiCall(recipeService.create, {
-    onSuccess: (r) => { toast.success('Recipe created'); navigation.replace('RecipeDetail', { recipeId: r.id }); },
+    onSuccess: (r) => { 
+      toast.success('Recipe created'); 
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'RecipeDetail', params: { recipeId: r.id } }],
+      });
+    },
     onError:   (e) => toast.error('Create failed', e),
   });
 
   const { execute: updateRecipe, loading: updating } = useApiCall(recipeService.update, {
-    onSuccess: () => { toast.success('Recipe updated'); navigation.goBack(); },
+    onSuccess: () => { 
+      toast.success('Recipe updated'); 
+      navigation.navigate('Recipes');
+    },
     onError:   (e) => toast.error('Update failed', e),
   });
 
@@ -177,16 +186,27 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
         {/* Difficulty picker */}
         <View style={styles.fieldGroup}>
           <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>DIFFICULTY</Text>
-          <TouchableOpacity style={[styles.selector, { borderColor: colors.border, backgroundColor: colors.surfaceElevated }]} onPress={() => setDiffSheet(true)}>
-            <StatusBadge label={difficulty} auto />
-            <Text style={{ color: colors.textMuted }}>›</Text>
+          <TouchableOpacity 
+            style={[styles.difficultySelector, { borderColor: colors.border, backgroundColor: colors.background }]} 
+            onPress={() => setDiffSheet(true)}
+          >
+            <Text style={[styles.difficultyLabel, { color: colors.textPrimary }]}>
+              {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.row3}>
-          <FormField label="Prep (min)" value={prepTime} onChangeText={setPrepTime} placeholder="15" keyboardType="numeric" style={{ flex: 1 }} />
-          <FormField label="Cook (min)" value={cookTime} onChangeText={setCookTime} placeholder="30" keyboardType="numeric" style={{ flex: 1 }} />
-          <FormField label="Servings"   value={servings}  onChangeText={setServings}  placeholder="4"  keyboardType="numeric" style={{ flex: 1 }} />
+          <View style={styles.timeField}>
+            <FormField label="Prep (min)" value={prepTime} onChangeText={setPrepTime} placeholder="15" keyboardType="numeric" />
+          </View>
+          <View style={styles.timeField}>
+            <FormField label="Cook (min)" value={cookTime} onChangeText={setCookTime} placeholder="30" keyboardType="numeric" />
+          </View>
+          <View style={styles.servingsField}>
+            <FormField label="Servings" value={servings} onChangeText={setServings} placeholder="4" keyboardType="numeric" />
+          </View>
         </View>
 
         {/* Category */}
@@ -217,31 +237,39 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
         </View>
 
         {/* Published toggle */}
-        <View style={[styles.toggleRow, { borderTopColor: colors.border }]}>
+        <View style={[styles.publishedSection, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.toggleLabel, { color: colors.textPrimary }]}>Published</Text>
             <Text style={[styles.toggleSub, { color: colors.textSecondary }]}>Visible to other users</Text>
           </View>
           <Switch value={isPublished} onValueChange={setIsPublished} trackColor={{ false: colors.border, true: colors.primary }} thumbColor={isPublished ? colors.background : colors.textSecondary} />
         </View>
+        
+        {/* Bottom spacing for Details block */}
+        <View style={{ height: SPACING.md }} />
       </ThemedCard>
 
       {/* Ingredients */}
       <ThemedCard title={`Ingredients (${ingredients.length})`}>
-        {ingredients.map((ing, i) => (
-          <View key={ing.tempId} style={[styles.ingRow, { borderBottomColor: colors.border }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.ingName, { color: colors.textPrimary }]}>{ing.name}</Text>
-              <Text style={[styles.ingQty, { color: colors.textSecondary }]}>{ing.quantity}{ing.unit ? ` ${ing.unit}` : ''}</Text>
+        <View style={[styles.ingredientsContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          {ingredients.map((ing, i) => (
+            <View key={ing.tempId} style={[styles.ingRow, { borderBottomColor: colors.border }, i === ingredients.length - 1 && { borderBottomWidth: 0 }]}>
+              <View style={[styles.ingIcon, { backgroundColor: colors.primaryDim }]}>
+                <Ionicons name="nutrition-outline" size={14} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.ingName, { color: colors.textPrimary }]}>{ing.name}</Text>
+                <Text style={[styles.ingQty, { color: colors.textSecondary }]}>{ing.quantity}{ing.unit ? ` ${ing.unit}` : ''}</Text>
+              </View>
+              <TouchableOpacity onPress={() => openEditIng(i)} style={[styles.ingAction, { backgroundColor: colors.surfaceElevated }]}>
+                <Ionicons name="pencil-outline" size={15} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setIngredients(prev => prev.filter((_, idx) => idx !== i))} style={[styles.ingAction, { backgroundColor: colors.surfaceElevated }]}>
+                <Ionicons name="trash-outline" size={15} color={colors.danger} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => openEditIng(i)} style={styles.ingAction}>
-              <Ionicons name="pencil-outline" size={15} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setIngredients(prev => prev.filter((_, idx) => idx !== i))} style={styles.ingAction}>
-              <Ionicons name="trash-outline" size={15} color={colors.danger} />
-            </TouchableOpacity>
-          </View>
-        ))}
+          ))}
+        </View>
         <TouchableOpacity style={[styles.addIngBtn, { borderColor: colors.border }]} onPress={() => { setEditIngIdx(null); setIngName(''); setIngQty(''); setIngUnit(''); setIngSheet(true); }}>
           <Ionicons name="add" size={16} color={colors.primary} />
           <Text style={[styles.addIngLabel, { color: colors.primary }]}>Add ingredient</Text>
@@ -261,7 +289,7 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
       <View style={{ height: SPACING.xl }} />
 
       {/* Pickers */}
-      <ModalSheet visible={diffSheet} onClose={() => setDiffSheet(false)} title="Difficulty">
+      <ModalSheet visible={diffSheet} onClose={() => setDiffSheet(false)} title="Difficulty" compact>
         {DIFFICULTIES.map(d => (
           <TouchableOpacity key={d} style={[styles.sheetOption, { borderBottomColor: colors.border }, d === difficulty && { backgroundColor: colors.primaryDim }]} onPress={() => { setDifficulty(d); setDiffSheet(false); }}>
             <StatusBadge label={d} auto />
@@ -270,7 +298,7 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
         ))}
       </ModalSheet>
 
-      <ModalSheet visible={catSheet} onClose={() => setCatSheet(false)} title="Category">
+      <ModalSheet visible={catSheet} onClose={() => setCatSheet(false)} title="Category" compact>
         <TouchableOpacity style={[styles.sheetOption, { borderBottomColor: colors.border }, !categoryId && { backgroundColor: colors.primaryDim }]} onPress={() => { setCategoryId(null); setCatSheet(false); }}>
           <Text style={{ color: !categoryId ? colors.primary : colors.textPrimary }}>None</Text>
           {!categoryId && <Text style={{ color: colors.primary }}>✓</Text>}
@@ -283,7 +311,7 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
         ))}
       </ModalSheet>
 
-      <ModalSheet visible={tagSheet} onClose={() => setTagSheet(false)} title="Tags" primaryLabel="Done" onPrimary={() => setTagSheet(false)}>
+      <ModalSheet visible={tagSheet} onClose={() => setTagSheet(false)} title="Tags" primaryLabel="Done" onPrimary={() => setTagSheet(false)} compact>
         {tags.map(t => {
           const sel = selectedTags.includes(t.id);
           return (
@@ -296,7 +324,7 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
         })}
       </ModalSheet>
 
-      <ModalSheet visible={ingSheet} onClose={() => setIngSheet(false)} title={editIngIdx !== null ? 'Edit ingredient' : 'Add ingredient'} primaryLabel={editIngIdx !== null ? 'Save' : 'Add'} onPrimary={handleSaveIngredient}>
+      <ModalSheet visible={ingSheet} onClose={() => setIngSheet(false)} title={editIngIdx !== null ? 'Edit ingredient' : 'Add ingredient'} primaryLabel={editIngIdx !== null ? 'Save' : 'Add'} onPrimary={handleSaveIngredient} compact>
         <FormField label="Name" value={ingName} onChangeText={setIngName} placeholder="e.g. Flour" required returnKeyType="next" />
         <FormField label="Quantity" value={ingQty} onChangeText={setIngQty} placeholder="e.g. 200" required returnKeyType="next" />
         <FormField label="Unit (optional)" value={ingUnit} onChangeText={setIngUnit} placeholder="e.g. g, ml, cups" returnKeyType="done" />
@@ -312,16 +340,59 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6 },
   selector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 48, borderRadius: RADIUS.md, borderWidth: 1, paddingHorizontal: SPACING.md },
   selectorValue: { fontSize: 15 },
+  difficultySelector: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: SPACING.md, 
+    paddingVertical: 12, 
+    borderRadius: RADIUS.md, 
+    borderWidth: 1, 
+    minHeight: 48 
+  },
+  difficultyLabel: { 
+    fontSize: 15, 
+    fontWeight: '500' 
+  },
   row3: { flexDirection: 'row', gap: 8 },
+  timeField: { flex: 1, minWidth: 80 },
+  servingsField: { flex: 0.8, minWidth: 70 },
   tagsArea: { minHeight: 44, borderRadius: RADIUS.md, borderWidth: 1, paddingHorizontal: SPACING.md, paddingVertical: 8, justifyContent: 'center' },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', paddingTop: SPACING.md, borderTopWidth: 1, marginTop: 4 },
+  publishedSection: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: SPACING.md, 
+    borderRadius: RADIUS.md, 
+    borderWidth: 1, 
+    marginTop: SPACING.md,
+    marginBottom: SPACING.md
+  },
   toggleLabel: { fontSize: 15, fontWeight: '500' },
   toggleSub:   { fontSize: 12, marginTop: 2 },
-  ingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, gap: 8 },
+  ingredientsContainer: { 
+    borderRadius: RADIUS.md, 
+    borderWidth: 1, 
+    padding: SPACING.sm, 
+    marginBottom: SPACING.sm 
+  },
+  ingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, gap: 10 },
+  ingIcon: { 
+    width: 28, 
+    height: 28, 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    flexShrink: 0 
+  },
   ingName:   { fontSize: 14, fontWeight: '500' },
   ingQty:    { fontSize: 12, marginTop: 1 },
-  ingAction: { padding: 4 },
+  ingAction: { 
+    padding: 6, 
+    borderRadius: RADIUS.sm, 
+    marginLeft: 4 
+  },
   addIngBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, borderTopWidth: 1, borderTopColor: 'transparent', marginTop: 4 },
   addIngLabel: { fontSize: 14, fontWeight: '600' },
   saveBtn: { height: 52, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm },

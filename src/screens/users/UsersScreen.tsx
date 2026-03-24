@@ -2,20 +2,30 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl, TextInput, Platform,
+  TouchableOpacity, RefreshControl,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { userService } from '../../services/api';
 import { usePagination } from '../../hooks/usePagination';
 import { useApiCall } from '../../hooks/useApiCall';
 import { StatusBadge, EmptyState, SkeletonList, Pagination, ActionMenu } from '../../components';
+import SharedFilterBar from '../../components/SharedFilterBar';
 import { SPACING, RADIUS } from '../../constants/theme';
 import type { ApiUser } from '../../types/api.types';
 
-const ROLE_OPTIONS   = ['All roles',   'ADMIN', 'DEVELOPER', 'USER'];
-const STATUS_OPTIONS = ['All statuses', 'Active', 'Inactive'];
+const ROLE_CHIPS = [
+  { label: 'All roles',  value: null },
+  { label: 'ADMIN',      value: 'ADMIN' },
+  { label: 'DEVELOPER',  value: 'DEVELOPER' },
+  { label: 'USER',       value: 'USER' },
+];
+
+const STATUS_CHIPS = [
+  { label: 'All',      value: null },
+  { label: 'Active',   value: 'active' },
+  { label: 'Inactive', value: 'inactive' },
+];
 
 interface Props { navigation: any }
 
@@ -23,9 +33,9 @@ export default function UsersScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const toast = useToast();
 
-  const [search, setSearch]   = useState('');
-  const [role,   setRole]     = useState<string | null>(null);
-  const [status, setStatus]   = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [role,   setRole]   = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   const { execute: toggleStatus } = useApiCall(userService.toggleStatus, {
     onError: (e) => toast.error('Action failed', e),
@@ -49,7 +59,7 @@ export default function UsersScreen({ navigation }: Props) {
     setParams({
       ...(search ? { search } : {}),
       ...(role   ? { role }   : {}),
-      ...(status ? { status: status.toLowerCase() } : {}),
+      ...(status ? { status } : {}),
     });
   }, [search, role, status]);
 
@@ -69,81 +79,23 @@ export default function UsersScreen({ navigation }: Props) {
     refresh();
   }, [deleteUser, refresh]);
 
+  const handleChipChange = (groupIndex: number, value: string | null) => {
+    if (groupIndex === 0) setRole(value);
+    else if (groupIndex === 1) setStatus(value);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-
-      {/* Barra de búsqueda compacta */}
-      <View style={[styles.searchBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <View style={[styles.searchInput, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
-          <Ionicons name="search-outline" size={16} color={colors.textMuted} />
-          <TextInput
-            style={[styles.input, { color: colors.textPrimary }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}]}
-            placeholder="Search users…"
-            placeholderTextColor={colors.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={15} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: colors.primary }]}
-          onPress={() => navigation.navigate('UserForm')}
-        >
-          <Ionicons name="add" size={18} color={colors.background} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Filtros de chips */}
-      <View style={[styles.filtersRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {ROLE_OPTIONS.map(opt => {
-            const val = opt === 'All roles' ? null : opt;
-            const active = role === val;
-            return (
-              <TouchableOpacity
-                key={opt}
-                style={[styles.chip, active
-                  ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                  : { backgroundColor: colors.surfaceElevated, borderColor: colors.border }
-                ]}
-                onPress={() => setRole(val)}
-              >
-                <Text style={[styles.chipText, { color: active ? colors.background : colors.textSecondary }]}>
-                  {opt}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {STATUS_OPTIONS.map(opt => {
-            const val = opt === 'All statuses' ? null : opt;
-            const active = status === val;
-            return (
-              <TouchableOpacity
-                key={opt}
-                style={[styles.chip, active
-                  ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                  : { backgroundColor: colors.surfaceElevated, borderColor: colors.border }
-                ]}
-                onPress={() => setStatus(val)}
-              >
-                <Text style={[styles.chipText, { color: active ? colors.background : colors.textSecondary }]}>
-                  {opt}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+      {/* Unified filter bar */}
+      <SharedFilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search users…"
+        chipGroups={[ROLE_CHIPS, STATUS_CHIPS]}
+        chipValues={[role, status]}
+        onChipChange={handleChipChange}
+        onAction={() => navigation.navigate('UserForm')}
+      />
 
       {/* Lista */}
       <ScrollView
@@ -151,10 +103,14 @@ export default function UsersScreen({ navigation }: Props) {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={true}
         refreshControl={
-          <RefreshControl refreshing={loading && items.length > 0} onRefresh={refresh} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={loading && items.length > 0}
+            onRefresh={refresh}
+            tintColor={colors.primary}
+          />
         }
       >
-        {/* Header de sección */}
+        {/* Section header */}
         <View style={styles.sectionRow}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Users</Text>
           {total > 0 && (
@@ -208,10 +164,10 @@ export default function UsersScreen({ navigation }: Props) {
                     <StatusBadge label={user.isActive ? 'active' : 'inactive'} auto size="sm" />
                   </View>
                   <ActionMenu actions={[
-                    { label: 'Edit',            icon: 'pencil-outline',       onPress: () => navigation.navigate('UserForm', { userId: user.id }) },
-                    { label: 'Change password', icon: 'key-outline',          onPress: () => navigation.navigate('UserPassword', { userId: user.id }) },
+                    { label: 'Edit',            icon: 'pencil-outline',            onPress: () => navigation.navigate('UserForm', { userId: user.id }) },
+                    { label: 'Change password', icon: 'key-outline',               onPress: () => navigation.navigate('UserPassword', { userId: user.id }) },
                     { label: user.isActive ? 'Deactivate' : 'Activate', icon: user.isActive ? 'pause-circle-outline' : 'play-circle-outline', onPress: () => handleToggleStatus(user) },
-                    { label: 'Delete',          icon: 'trash-outline',        danger: true, onPress: () => handleDelete(user) },
+                    { label: 'Delete',          icon: 'trash-outline', danger: true, onPress: () => handleDelete(user) },
                   ]} />
                 </View>
               </TouchableOpacity>
@@ -228,46 +184,7 @@ export default function UsersScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-  },
-  searchInput: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
-    height: 40, borderRadius: RADIUS.md, borderWidth: 1,
-    paddingHorizontal: SPACING.sm, gap: 6,
-  },
-  input: { flex: 1, fontSize: 14 },
-  addBtn: {
-    width: 40, height: 40, borderRadius: RADIUS.md,
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  filtersRow: {
-    gap: 2,
-    borderBottomWidth: 1,
-    paddingBottom: SPACING.xs,
-  },
-  chips: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 5,
-  },
-  chip: {
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  chipText: { fontSize: 12, fontWeight: '600' },
-
-  scroll:      { flex: 1 },
+  scroll:    { flex: 1 },
   listContent: { padding: SPACING.md },
 
   sectionRow: {

@@ -75,7 +75,7 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
       setSelectedTags(r.tags.map(t => t.id));
       setIngredients(r.ingredients.map(i => ({ ...i, tempId: i.id })));
     },
-    onError: (e) => { toast.error('Failed to load', e); navigation.goBack(); },
+    onError: (e) => { toast.error('Failed to load', e); navigation.navigate('Recipes'); },
   });
 
   const { execute: createRecipe, loading: creating } = useApiCall(recipeService.create, {
@@ -98,7 +98,19 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
   });
 
   useEffect(() => {
-    navigation.setOptions({ title: isEdit ? 'Edit recipe' : 'New recipe' });
+    navigation.setOptions({
+      title: isEdit ? 'Edit recipe' : 'New recipe',
+      headerLeft: () => (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.navigate('Recipes')}
+          activeOpacity={0.7}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
+        </TouchableOpacity>
+      ),
+    });
     loadCategories();
     loadTags();
     if (isEdit && recipeId) loadRecipe(recipeId);
@@ -336,6 +348,15 @@ export default function RecipeFormScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content:   { padding: SPACING.lg },
+
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+
   fieldGroup: { marginBottom: SPACING.md },
   fieldLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6 },
   selector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 48, borderRadius: RADIUS.md, borderWidth: 1, paddingHorizontal: SPACING.md },

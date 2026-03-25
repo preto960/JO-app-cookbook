@@ -1,13 +1,13 @@
 // src/screens/users/UserFormScreen.tsx
 import React, { useEffect, useState } from 'react';
 import { View, ScrollView, StyleSheet, Switch, Text, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { userService } from '../../services/api';
 import { useApiCall } from '../../hooks/useApiCall';
-import { FormField, SkeletonList, ThemedCard } from '../../components';
+import { FormField, SkeletonList, ThemedCard, ModalSheet, StatusBadge } from '../../components';
 import PasswordInput from '../../components/PasswordInput';
-import InlineSelect from '../../components/InlineSelect';
 import { SPACING, RADIUS } from '../../constants/theme';
 
 interface Props {
@@ -42,6 +42,9 @@ export default function UserFormScreen({ navigation, route }: Props) {
   const [errors,    setErrors]    = useState<Record<string, string>>({});
   const [availableRoles, setAvailableRoles] = useState<string[]>(DEFAULT_ROLES);
 
+  // Modal state for role picker
+  const [roleSheet, setRoleSheet] = useState(false);
+
   const { execute: loadUser, loading: loadingUser } = useApiCall(userService.getById, {
     onSuccess: (user) => {
       setEmail(user.email);
@@ -51,13 +54,12 @@ export default function UserFormScreen({ navigation, route }: Props) {
       setIsActive(user.isActive);
       setBio(user.bio ?? '');
     },
-    onError: (e) => { toast.error('Failed to load user', e); navigation.goBack(); },
+    onError: (e) => { toast.error('Failed to load user', e); navigation.navigate('Users'); },
   });
 
   const { execute: loadRoles } = useApiCall(userService.getRoles, {
     onSuccess: (roles) => {
       if (Array.isArray(roles) && roles.length) {
-        // Normalize: backend may return strings or objects
         const normalized = roles.map(normalizeRole).filter(Boolean);
         if (normalized.length) setAvailableRoles(normalized);
       }
@@ -65,17 +67,29 @@ export default function UserFormScreen({ navigation, route }: Props) {
   });
 
   const { execute: createUser, loading: creating } = useApiCall(userService.create, {
-    onSuccess: () => { toast.success('User created'); navigation.goBack(); },
+    onSuccess: () => { toast.success('User created'); navigation.navigate('Users'); },
     onError: (e) => toast.error('Create failed', e),
   });
 
   const { execute: updateUser, loading: updating } = useApiCall(userService.update, {
-    onSuccess: () => { toast.success('User updated'); navigation.goBack(); },
+    onSuccess: () => { toast.success('User updated'); navigation.navigate('Users'); },
     onError: (e) => toast.error('Update failed', e),
   });
 
   useEffect(() => {
-    navigation.setOptions({ title: isEdit ? 'Edit user' : 'New user' });
+    navigation.setOptions({
+      title: isEdit ? 'Edit user' : 'New user',
+      headerLeft: () => (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.navigate('Users')}
+          activeOpacity={0.7}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
+        </TouchableOpacity>
+      ),
+    });
     loadRoles();
     if (isEdit && userId) loadUser(userId);
   }, [userId]);
@@ -108,8 +122,6 @@ export default function UserFormScreen({ navigation, route }: Props) {
   };
 
   const saving = creating || updating;
-
-  const roleOptions = availableRoles.map(r => ({ label: r, value: r }));
 
   if (isEdit && loadingUser) {
     return (
@@ -164,13 +176,19 @@ export default function UserFormScreen({ navigation, route }: Props) {
       )}
 
       <ThemedCard title="Role & status">
-        <InlineSelect
-          label="Role"
-          options={roleOptions}
-          value={role}
-          onChange={setRole}
-          required
-        />
+        {/* Role picker — same pattern as RecipeFormScreen difficulty */}
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>ROLE</Text>
+          <TouchableOpacity
+            style={[styles.roleSelector, { borderColor: colors.border, backgroundColor: colors.background }]} 
+            onPress={() => setRoleSheet(true)}
+          >
+            <Text style={[styles.roleLabel, { color: colors.textPrimary }]}>
+              {role.charAt(0).toUpperCase() + role.slice(1)}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
 
         {/* Active toggle */}
         <View style={[styles.toggleRow, { borderTopColor: colors.border }]}>
@@ -185,6 +203,8 @@ export default function UserFormScreen({ navigation, route }: Props) {
             thumbColor={isActive ? colors.background : colors.textSecondary}
           />
         </View>
+
+        <View style={{ height: SPACING.md }} />
       </ThemedCard>
 
       <ThemedCard title="Profile (optional)">
@@ -206,6 +226,31 @@ export default function UserFormScreen({ navigation, route }: Props) {
       </TouchableOpacity>
 
       <View style={{ height: SPACING.xl * 2 }} />
+
+      {/* Role picker modal */}
+      <ModalSheet
+        visible={roleSheet}
+        onClose={() => setRoleSheet(false)}
+        title="Role"
+        compact
+      >
+        {availableRoles.map((r) => (
+          <TouchableOpacity
+            key={r}
+            style={[
+              styles.sheetOption,
+              { borderBottomColor: colors.border },
+              r === role && { backgroundColor: colors.primaryDim },
+            ]}
+            onPress={() => { setRole(r); setRoleSheet(false); }}
+          >
+            <StatusBadge label={r} auto />
+            {r === role && (
+              <Ionicons name="checkmark" size={16} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </ModalSheet>
     </ScrollView>
   );
 }
@@ -213,22 +258,61 @@ export default function UserFormScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content:   { padding: SPACING.md },
+
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+
+  fieldGroup: { marginBottom: SPACING.md },
   fieldLabel: {
     fontSize: 12, fontWeight: '600',
     textTransform: 'uppercase', letterSpacing: 0.7,
     marginBottom: 6,
   },
   errorText:  { fontSize: 12, marginTop: 4 },
+
+  // Role selector — matches RecipeFormScreen difficultySelector style
+  roleSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    minHeight: 48,
+  },
+  roleLabel: { 
+    fontSize: 15, 
+    fontWeight: '500' 
+  },
+
   toggleRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingTop: SPACING.sm, borderTopWidth: 1, marginTop: 4,
   },
   toggleLabel: { fontSize: 15, fontWeight: '500' },
   toggleSub:   { fontSize: 12, marginTop: 2 },
+
   saveBtn: {
     height: 52, borderRadius: RADIUS.md,
     alignItems: 'center', justifyContent: 'center',
     marginTop: SPACING.sm,
   },
   saveBtnText: { fontSize: 16, fontWeight: '800' },
+
+  // Sheet option — same as RecipeFormScreen sheetOption
+  sheetOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: SPACING.md,
+    borderBottomWidth: 1,
+    borderRadius: RADIUS.sm,
+  },
 });

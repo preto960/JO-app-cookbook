@@ -26,7 +26,7 @@ export default function UserPasswordScreen({ navigation, route }: Props) {
   const [error,    setError]      = useState('');
 
   const { execute: changePass, loading } = useApiCall(userService.changePassword, {
-    onSuccess: () => { toast.success('Password updated'); navigation.goBack(); },
+    onSuccess: () => { toast.success('Password updated'); navigation.navigate('Users'); },
     onError:   (e) => toast.error('Failed', e),
   });
 

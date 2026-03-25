@@ -1,6 +1,4 @@
 // src/components/ModalSheet.tsx
-// A bottom sheet on mobile, centered modal on web/tablet.
-// Handles keyboard avoidance and safe area. Cross-platform: web, iOS, Android.
 import React, { ReactNode } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, StyleSheet,
@@ -15,18 +13,13 @@ interface Props {
   onClose:    () => void;
   title?:     string;
   children:   ReactNode;
-  /** Show a primary action button at the bottom */
   primaryLabel?:    string;
   onPrimary?:       () => void;
   primaryLoading?:  boolean;
   primaryDanger?:   boolean;
-  /** Footer action buttons area — overrides primaryLabel/onPrimary */
   footer?:          ReactNode;
-  /** Max height percentage on mobile. Default: 85 */
   maxHeightPct?:    number;
-  /** Prevent closing by tapping backdrop */
   dismissable?:     boolean;
-  /** Compact mode for simple selections. Smaller width on web. */
   compact?:         boolean;
 }
 
@@ -43,7 +36,7 @@ export default function ModalSheet({
       styles.sheet,
       isWeb 
         ? (compact ? styles.centeredCompact : styles.centered)
-        : [styles.bottom, { maxHeight: `${maxHeightPct}%` as any }],
+        : styles.bottom,
       {
         backgroundColor: colors.surface,
         borderColor:     colors.border,
@@ -131,16 +124,18 @@ const styles = StyleSheet.create({
   },
   sheet: {
     borderTopWidth: 1,
+    flexDirection: 'column', // ✅ FIX
   },
   bottom: {
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
+    maxHeight: '85%', // ✅ FIX
   },
   centered: {
-    // Web: centered card
     alignSelf: 'center',
     width: '100%',
     maxWidth: 480,
+    maxHeight: '85%', // ✅ FIX
     borderRadius: RADIUS.xl,
     marginBottom: 'auto' as any,
     marginTop: 'auto' as any,
@@ -148,10 +143,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   centeredCompact: {
-    // Web: smaller centered card for simple selections
     alignSelf: 'center',
     width: '100%',
     maxWidth: 320,
+    maxHeight: '85%', // ✅ FIX
     borderRadius: RADIUS.xl,
     marginBottom: 'auto' as any,
     marginTop: 'auto' as any,
@@ -167,7 +162,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   title: { fontSize: 17, fontWeight: '700' },
-  body: { flexShrink: 1 },
+  body: { 
+    flex: 1, // ✅ FIX CLAVE
+  },
   bodyContent: { padding: SPACING.lg },
   footer: {
     flexDirection: 'row',

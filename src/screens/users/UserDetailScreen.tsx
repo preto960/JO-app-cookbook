@@ -2,7 +2,7 @@
 // Shows full user profile fetched from API.
 // Cross-platform: web, iOS, Android.
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
@@ -10,7 +10,7 @@ import { userService } from '../../services/api';
 import { useApiCall } from '../../hooks/useApiCall';
 import {
   StatusBadge, EmptyState, ThemedCard, InfoRow,
-  SkeletonList,
+  SkeletonList, ActionMenu,
 } from '../../components';
 import { SPACING, RADIUS } from '../../constants/theme';
 
@@ -34,17 +34,63 @@ export default function UserDetailScreen({ navigation, route }: Props) {
   });
 
   const { execute: deleteUser } = useApiCall(userService.delete, {
-    onSuccess: () => { toast.success('User deleted'); navigation.goBack(); },
+    onSuccess: () => { toast.success('User deleted'); navigation.navigate('Users'); },
     onError: (e) => toast.error('Delete failed', e),
   });
 
   useEffect(() => { loadUser(userId); }, [userId]);
 
-  // Set header title only — no headerRight ActionMenu (it was misaligned)
   useEffect(() => {
     if (!user) return;
+
+    const handleDelete = () => {
+      if (Platform.OS !== 'web') {
+        Alert.alert('Delete user', `Delete ${user.firstName} ${user.lastName}? This cannot be undone.`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => deleteUser(userId) },
+        ]);
+      } else {
+        deleteUser(userId);
+      }
+    };
+
     navigation.setOptions({
       title: `${user.firstName} ${user.lastName}`,
+      headerLeft: () => (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.navigate('Users')}
+          activeOpacity={0.7}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <ActionMenu actions={[
+          {
+            label: 'Edit',
+            icon: 'pencil-outline',
+            onPress: () => navigation.navigate('UserForm', { userId }),
+          },
+          {
+            label: 'Change password',
+            icon: 'key-outline',
+            onPress: () => navigation.navigate('UserPassword', { userId }),
+          },
+          {
+            label: user.isActive ? 'Deactivate' : 'Activate',
+            icon: user.isActive ? 'pause-circle-outline' : 'play-circle-outline',
+            onPress: () => toggleStatus(userId),
+          },
+          {
+            label: 'Delete',
+            icon: 'trash-outline',
+            danger: true,
+            onPress: handleDelete,
+          },
+        ]} />
+      ),
     });
   }, [user]);
 
@@ -63,7 +109,7 @@ export default function UserDetailScreen({ navigation, route }: Props) {
         title="User not found"
         description={error ?? undefined}
         actionLabel="Go back"
-        onAction={() => navigation.goBack()}
+        onAction={() => navigation.navigate('Users')}
       />
     );
   }
@@ -118,50 +164,6 @@ export default function UserDetailScreen({ navigation, route }: Props) {
         </ThemedCard>
       )}
 
-      {/* Actions */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: colors.primaryDim, borderColor: colors.primary }]}
-          onPress={() => navigation.navigate('UserForm', { userId })}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="pencil-outline" size={16} color={colors.primary} />
-          <Text style={[styles.btnLabel, { color: colors.primary }]}>Edit user</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
-          onPress={() => navigation.navigate('UserPassword', { userId })}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="key-outline" size={16} color={colors.textSecondary} />
-          <Text style={[styles.btnLabel, { color: colors.textSecondary }]}>Password</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Secondary actions */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
-          onPress={() => toggleStatus(userId)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name={user.isActive ? 'pause-circle-outline' : 'play-circle-outline'} size={16} color={colors.textSecondary} />
-          <Text style={[styles.btnLabel, { color: colors.textSecondary }]}>
-            {user.isActive ? 'Deactivate' : 'Activate'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: `${colors.danger}15`, borderColor: colors.danger }]}
-          onPress={() => deleteUser(userId)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="trash-outline" size={16} color={colors.danger} />
-          <Text style={[styles.btnLabel, { color: colors.danger }]}>Delete</Text>
-        </TouchableOpacity>
-      </View>
-
       <View style={{ height: SPACING.xl }} />
     </ScrollView>
   );
@@ -170,6 +172,14 @@ export default function UserDetailScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content:   { padding: SPACING.lg },
+
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
 
   avatarSection: { alignItems: 'center', paddingVertical: SPACING.lg, gap: 6 },
   avatarImg: {
@@ -185,11 +195,4 @@ const styles = StyleSheet.create({
   displayName:   { fontSize: 22, fontWeight: '800' },
   displayEmail:  { fontSize: 14 },
   badgeRow:      { flexDirection: 'row', gap: 8, marginTop: 4 },
-
-  actions: { flexDirection: 'row', gap: 12, marginBottom: SPACING.sm },
-  btn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, height: 44, borderRadius: RADIUS.md, borderWidth: 1,
-  },
-  btnLabel: { fontSize: 14, fontWeight: '700' },
 });

@@ -65,7 +65,7 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
   });
 
   const { execute: deleteRecipe } = useApiCall(recipeService.delete, {
-    onSuccess: () => { toast.success('Recipe deleted'); navigation.goBack(); },
+    onSuccess: () => { toast.success('Recipe deleted'); navigation.navigate('Recipes'); },
     onError: (e) => toast.error('Delete failed', e),
   });
 
@@ -119,7 +119,7 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
         title="Recipe not found"
         description="No recipe ID was provided."
         actionLabel="Go back"
-        onAction={() => navigation.goBack()}
+        onAction={() => navigation.navigate('Recipes')}
       />
     );
   }
@@ -139,7 +139,7 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
         title="Recipe not found"
         description={error ?? undefined}
         actionLabel="Go back"
-        onAction={() => navigation.goBack()}
+        onAction={() => navigation.navigate('Recipes')}
       />
     );
   }

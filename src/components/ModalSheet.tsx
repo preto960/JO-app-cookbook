@@ -32,14 +32,17 @@ export default function ModalSheet({
   const isWeb = Platform.OS === 'web';
 
   const content = (
+    
+
     <View style={[
       styles.sheet,
-      isWeb 
+      // En móvil siempre usar bottom, en web usar centered/centeredCompact
+      Platform.OS === 'web'
         ? (compact ? styles.centeredCompact : styles.centered)
         : styles.bottom,
       {
         backgroundColor: colors.surface,
-        borderColor:     colors.border,
+        borderColor: colors.border,
         ...(Platform.OS === 'web'
           ? { boxShadow: '0 -8px 40px rgba(0,0,0,0.25)' }
           : { shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.18, shadowRadius: 20, elevation: 20 }),
@@ -114,10 +117,15 @@ export default function ModalSheet({
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  /* overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
+  }, */
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end', // ← CAMBIO CLAVE
   },
   backdrop: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -137,8 +145,8 @@ const styles = StyleSheet.create({
     maxWidth: 480,
     maxHeight: '85%', // ✅ FIX
     borderRadius: RADIUS.xl,
-    marginBottom: 'auto' as any,
-    marginTop: 'auto' as any,
+    /* marginBottom: 'auto' as any,
+    marginTop: 'auto' as any, */
     borderWidth: 1,
     borderTopWidth: 1,
   },
@@ -148,8 +156,8 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     maxHeight: '85%', // ✅ FIX
     borderRadius: RADIUS.xl,
-    marginBottom: 'auto' as any,
-    marginTop: 'auto' as any,
+    /* marginBottom: 'auto' as any,
+    marginTop: 'auto' as any, */
     borderWidth: 1,
     borderTopWidth: 1,
   },

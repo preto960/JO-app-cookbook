@@ -4,7 +4,7 @@
 // Compatible: web, iOS, Android.
 import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -13,7 +13,6 @@ import { RADIUS, SPACING } from '../constants/theme';
 export interface SelectOption {
   label: string;
   value: string;
-  /** Ícono opcional de Ionicons */
   icon?: React.ComponentProps<typeof Ionicons>['name'];
 }
 
@@ -33,6 +32,17 @@ export default function InlineSelect({
   const [open, setOpen] = useState(false);
 
   const selected = options.find(o => o.value === value);
+
+  const dropdownShadow = Platform.select({
+    web: { boxShadow: '0 4px 16px rgba(0,0,0,0.18)' } as any,
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      elevation: 8,
+    },
+  });
 
   return (
     <View style={styles.container}>
@@ -73,10 +83,8 @@ export default function InlineSelect({
           {
             backgroundColor: colors.surface,
             borderColor: colors.border,
-            ...(require('react-native').Platform.OS === 'web'
-              ? { boxShadow: '0 4px 16px rgba(0,0,0,0.18)' }
-              : { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8 }),
           },
+          dropdownShadow,
         ]}>
           {options.map((opt, i) => {
             const active = opt.value === value;

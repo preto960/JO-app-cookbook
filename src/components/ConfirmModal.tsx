@@ -1,6 +1,6 @@
 // src/components/ConfirmModal.tsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Platform, Alert } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { RADIUS, SPACING } from '../constants/theme';
 
@@ -21,7 +21,26 @@ export default function ConfirmModal({
 }: Props) {
   const { colors } = useTheme();
 
-  if (Platform.OS !== 'web') return null; // use native Alert on mobile
+  // On native, use platform Alert when it becomes visible
+  React.useEffect(() => {
+    if (!visible || Platform.OS === 'web') return;
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: cancelText, style: 'cancel', onPress: onCancel },
+        {
+          text: confirmText,
+          style: danger ? 'destructive' : 'default',
+          onPress: onConfirm,
+        },
+      ],
+      { cancelable: true, onDismiss: onCancel }
+    );
+  }, [visible]);
+
+  // On native, Alert handles it — render nothing
+  if (Platform.OS !== 'web') return null;
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onCancel}>

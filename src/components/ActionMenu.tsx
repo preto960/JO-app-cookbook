@@ -1,10 +1,11 @@
 // src/components/ActionMenu.tsx
 // A floating action menu triggered by a kebab (⋮) button.
-// Uses Modal for true cross-platform support: web, iOS, Android.
-import React, { useState, useRef } from 'react';
+// Uses Modal + measured anchor position for true cross-platform support.
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, Pressable,
-  StyleSheet, Platform,
+  StyleSheet, Platform, findNodeHandle, UIManager,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -18,13 +19,19 @@ export interface MenuAction {
   disabled?: boolean;
 }
 
+interface MenuPosition {
+  top: number;
+  right: number;
+}
+
 interface Props {
   actions:  MenuAction[];
-  /** Size of the trigger button. Default: 32 */
   size?:    number;
-  /** Use 'ellipsis-horizontal' or 'ellipsis-vertical' icon */
   iconName?: React.ComponentProps<typeof Ionicons>['name'];
 }
+
+const MENU_WIDTH = 200;
+const ITEM_HEIGHT = 46;
 
 export default function ActionMenu({
   actions,
@@ -33,17 +40,65 @@ export default function ActionMenu({
 }: Props) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<MenuPosition>({ top: 60, right: 16 });
+  const triggerRef = useRef<View>(null);
 
   const filtered = actions.filter(a => !a.disabled);
 
+  const measureAndOpen = useCallback(() => {
+    if (!triggerRef.current) {
+      setOpen(true);
+      return;
+    }
+
+    const handle = findNodeHandle(triggerRef.current);
+    if (!handle) {
+      setOpen(true);
+      return;
+    }
+
+    UIManager.measure(handle, (x, y, width, height, pageX, pageY) => {
+      const screenWidth = Dimensions.get('window').width;
+      const screenHeight = Dimensions.get('window').height;
+      const menuHeight = filtered.length * ITEM_HEIGHT + 2;
+
+      // Position menu below trigger, aligned to right edge
+      let top = pageY + height + 4;
+      let right = screenWidth - (pageX + width);
+
+      // Flip up if not enough space below
+      if (top + menuHeight > screenHeight - 20) {
+        top = pageY - menuHeight - 4;
+      }
+
+      // Clamp right so menu doesn't go off-screen
+      right = Math.max(8, Math.min(right, screenWidth - MENU_WIDTH - 8));
+
+      setMenuPos({ top, right });
+      setOpen(true);
+    });
+  }, [filtered.length]);
+
+  const menuShadow = Platform.select({
+    web: { boxShadow: '0 4px 20px rgba(0,0,0,0.18)' } as any,
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.16,
+      shadowRadius: 12,
+      elevation: 10,
+    },
+  });
+
   return (
-    <View style={{ marginRight: 16 }}>
+    <View>
       <TouchableOpacity
+        ref={triggerRef}
         style={[
           styles.trigger,
           { width: size, height: size, backgroundColor: colors.surfaceElevated },
         ]}
-        onPress={() => setOpen(true)}
+        onPress={measureAndOpen}
         activeOpacity={0.7}
         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       >
@@ -58,16 +113,18 @@ export default function ActionMenu({
         statusBarTranslucent
       >
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
-        <View style={[
-          styles.menu,
-          {
-            backgroundColor: colors.surface,
-            borderColor:     colors.border,
-            ...(Platform.OS === 'web'
-              ? { boxShadow: '0 4px 20px rgba(0,0,0,0.18)' }
-              : { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12, elevation: 10 }),
-          },
-        ]}>
+        <View
+          style={[
+            styles.menu,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              top: menuPos.top,
+              right: menuPos.right,
+            },
+            menuShadow,
+          ]}
+        >
           {filtered.map((action, i) => (
             <TouchableOpacity
               key={action.label}
@@ -109,9 +166,7 @@ const styles = StyleSheet.create({
   },
   menu: {
     position: 'absolute',
-    right: 16,
-    top: Platform.OS === 'ios' ? 100 : 60,
-    width: 200,
+    width: MENU_WIDTH,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     overflow: 'hidden',
@@ -122,6 +177,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 13,
     paddingHorizontal: SPACING.md,
+    minHeight: 46,
   },
   itemBorder: { borderBottomWidth: 1 },
   itemLabel: { fontSize: 14, fontWeight: '500' },

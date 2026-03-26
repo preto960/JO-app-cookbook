@@ -44,9 +44,8 @@ export default function ModalSheet({
 
   const sheetStyle = [
     styles.sheet,
-    isWeb
-      ? (compact ? styles.centeredCompact : styles.centered)
-      : styles.bottom,
+    // Siempre usar centrado, tanto en web como en móviles
+    compact ? styles.centeredCompact : styles.centered,
     {
       backgroundColor: colors.surface,
       borderColor: colors.border,
@@ -58,16 +57,17 @@ export default function ModalSheet({
     <Modal
       visible={visible}
       transparent
-      animationType={isWeb ? 'fade' : 'slide'}
+      animationType="fade" // Fade para todos los dispositivos (mejor para modales centrados)
       onRequestClose={dismissable ? onClose : undefined}
       statusBarTranslucent
     >
       <KeyboardAvoidingView
         style={[
           styles.overlay,
-          { justifyContent: isWeb ? 'center' : 'flex-end' },
+          { justifyContent: 'center' }, // Siempre centrar
         ]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
       >
         {dismissable && (
           <Pressable style={styles.backdrop} onPress={onClose} />
@@ -84,40 +84,46 @@ export default function ModalSheet({
             </View>
           )}
 
-          {/* Scrollable body */}
-          <ScrollView
-            style={styles.body}
-            contentContainerStyle={styles.bodyContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {children}
-          </ScrollView>
+          {/* Content container with proper flex */}
+          <View style={styles.contentContainer}>
+            {/* Scrollable body */}
+            <ScrollView
+              style={styles.body}
+              contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true} // Mostrar scrollbar
+              nestedScrollEnabled={true}
+              bounces={true} // Permitir bounce para mejor UX
+              scrollEnabled={true} // Asegurar que el scroll esté habilitado
+            >
+              {children}
+            </ScrollView>
 
-          {/* Footer */}
-          {footer ?? (primaryLabel && onPrimary ? (
-            <View style={[styles.footer, { borderTopColor: colors.border }]}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, { borderColor: colors.border, backgroundColor: colors.surfaceElevated }]}
-                onPress={onClose}
-              >
-                <Text style={[styles.cancelLabel, { color: colors.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.primaryBtn,
-                  { backgroundColor: primaryDanger ? colors.danger : colors.primary },
-                  primaryLoading && { opacity: 0.6 },
-                ]}
-                onPress={onPrimary}
-                disabled={primaryLoading}
-              >
-                <Text style={[styles.primaryLabel, { color: colors.background }]}>
-                  {primaryLoading ? 'Saving…' : primaryLabel}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : null)}
+            {/* Footer */}
+            {footer ?? (primaryLabel && onPrimary ? (
+              <View style={[styles.footer, { borderTopColor: colors.border }]}>
+                <TouchableOpacity
+                  style={[styles.cancelBtn, { borderColor: colors.border, backgroundColor: colors.surfaceElevated }]}
+                  onPress={onClose}
+                >
+                  <Text style={[styles.cancelLabel, { color: colors.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.primaryBtn,
+                    { backgroundColor: primaryDanger ? colors.danger : colors.primary },
+                    primaryLoading && { opacity: 0.6 },
+                  ]}
+                  onPress={onPrimary}
+                  disabled={primaryLoading}
+                >
+                  <Text style={[styles.primaryLabel, { color: colors.background }]}>
+                    {primaryLoading ? 'Saving…' : primaryLabel}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null)}
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -133,31 +139,37 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
   },
   sheet: {
-    borderTopWidth: 1,
+    borderWidth: 1, // Borde completo para modales centrados
     flexDirection: 'column',
   },
   bottom: {
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     maxHeight: '85%',
+    minHeight: 200, // Altura mínima para asegurar visibilidad del contenido
+    flex: 0, // No usar flex para permitir que el contenido determine la altura
   },
   centered: {
     alignSelf: 'center',
-    width: '100%',
-    maxWidth: 480,
-    maxHeight: '85%',
+    width: '90%',
+    maxWidth: Platform.OS === 'web' ? 480 : 350,
+    maxHeight: '75%', // Reducir un poco para asegurar que no ocupe toda la pantalla
+    minHeight: 400, // Altura mínima más grande para listas largas
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderTopWidth: 1,
+    marginHorizontal: 20,
+    marginVertical: 40,
   },
   centeredCompact: {
     alignSelf: 'center',
-    width: '100%',
-    maxWidth: 320,
-    maxHeight: '85%',
+    width: '85%',
+    maxWidth: Platform.OS === 'web' ? 320 : 300,
+    maxHeight: '65%', // Más pequeño para compacto
+    minHeight: 300, // Altura mínima para permitir scroll
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderTopWidth: 1,
+    marginHorizontal: 20,
+    marginVertical: 60,
   },
   header: {
     flexDirection: 'row',
@@ -168,8 +180,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   title: { fontSize: 17, fontWeight: '700' },
-  body: { flex: 1 },
-  bodyContent: { padding: SPACING.lg },
+  contentContainer: {
+    flex: 1,
+    minHeight: 200,
+    // No limitar maxHeight aquí, dejarlo al modal principal
+  },
+  body: { 
+    flex: 1,
+    // Altura máxima dinámica según si es compacto o no
+    maxHeight: Platform.OS === 'web' ? undefined : 350,
+  },
+  bodyContent: { 
+    padding: SPACING.lg,
+    // Remover flexGrow para permitir scroll natural
+  },
   footer: {
     flexDirection: 'row',
     gap: 12,

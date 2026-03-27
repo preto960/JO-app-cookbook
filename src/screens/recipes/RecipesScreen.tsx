@@ -1,5 +1,5 @@
 // src/screens/recipes/RecipesScreen.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   RefreshControl, Image,
@@ -40,9 +40,20 @@ export default function RecipesScreen({ navigation }: Props) {
   const [categories, setCategories] = useState<RecipeCategory[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   
+  // Calcular parámetros iniciales basados en el tab inicial
+  const getInitialParams = () => {
+    const initialTab = 'explore'; // Debe coincidir con useState inicial
+    return {
+      ...(initialTab === 'explore' ? { isPublished: true } : {}),
+    };
+  };
+  
   // Local filter states for modal
   const [tempDifficulty, setTempDifficulty] = useState<string | null>(null);
   const [tempCategoryId, setTempCategoryId] = useState<string | null>(null);
+  
+  // Estado para controlar cuándo cargar datos
+  const [shouldLoadData, setShouldLoadData] = useState(false);
 
   const { execute: loadCategories } = useApiCall(recipeService.getCategories, {
     onSuccess: (cats) => setCategories(Array.isArray(cats) ? cats : []),
@@ -58,26 +69,32 @@ export default function RecipesScreen({ navigation }: Props) {
 
   useEffect(() => { loadCategories(); }, []);
 
-  const apiFn = tab === 'explore'
-    ? recipeService.getAll
-    : tab === 'mine'
-    ? recipeService.getMine
-    : recipeService.getFavourites;
+  // Wrapper function que usa la función correcta según el tab actual
+  const apiWrapper = useCallback(async (params: any) => {
+    const apiFn = tab === 'explore'
+      ? recipeService.getAll
+      : tab === 'mine'
+      ? recipeService.getMine
+      : recipeService.getFavourites;
+    
+    return apiFn(params);
+  }, [tab]);
 
   const {
     items: rawItems, loading, page, totalPages, total,
-    loadPage, refresh, refreshWithParams, setParams,
+    loadPage, refresh, refreshWithParams, setParams, reset,
   } = usePagination<Recipe, any>({
-    apiFunction: apiFn as any,
+    apiFunction: apiWrapper,
     pageSize: 12,
+    initialParams: getInitialParams(),
     onError: (e) => toast.error('Load failed', e),
   });
 
-  // Refresh when screen comes back into focus (after editing)
+  // Cargar datos cuando la pantalla viene al foco
   useFocusEffect(
     useCallback(() => {
-      refresh();
-    }, [refresh])
+      setShouldLoadData(true);
+    }, [])
   );
 
   // Filter published recipes on client side for explore tab as fallback
@@ -85,28 +102,42 @@ export default function RecipesScreen({ navigation }: Props) {
     ? (tab === 'explore' ? rawItems.filter(recipe => recipe.isPublished) : rawItems)
     : [];
 
+  // Efecto simple para parámetros y carga
+  // Efecto único usando refreshWithParams (no actualiza estado interno pero hace la consulta correcta)
+  // Efecto que activa shouldLoadData cuando cambien los filtros
   useEffect(() => {
-    const updateParams = async () => {
-      const params = {
-        ...(search     ? { search }                               : {}),
-        ...(difficulty ? { difficulty }                           : {}),
-        ...(categoryId ? { categoryId }                           : {}),
-        ...(tab === 'explore' ? { isPublished: true }             : {}),
-      };
-      
-      const updatedParams = await setParams(params);
-      refreshWithParams(updatedParams);
-    };
-    
-    updateParams();
+    setShouldLoadData(true);
   }, [search, difficulty, categoryId, tab]);
 
-  const handleTabChange = (t: Tab) => {
+  // Efecto que ejecuta la consulta cuando shouldLoadData es true
+  useEffect(() => {
+    if (!shouldLoadData) return;
+    
+    const params = {
+      ...(search     ? { search }                               : {}),
+      ...(difficulty ? { difficulty }                           : {}),
+      ...(categoryId ? { categoryId }                           : {}),
+      ...(tab === 'explore' ? { isPublished: true }             : {}),
+    };
+    
+    refreshWithParams(params).then(() => {
+      // Resetear la bandera después de la consulta para permitir futuras actualizaciones
+      setShouldLoadData(false);
+    });
+  }, [shouldLoadData, refreshWithParams]);
+
+  const handleTabChange = useCallback((t: Tab) => {
     setTab(t);
     setSearch('');
     setDifficulty(null);
     setCategoryId(null);
-  };
+    
+    // Resetear el hook de paginación para limpiar datos anteriores
+    reset();
+    
+    // Activar carga de datos para la nueva pestaña
+    setShouldLoadData(true);
+  }, [reset]);
 
   // Build category chips dynamically
   const categoryChips = [
@@ -123,17 +154,17 @@ export default function RecipesScreen({ navigation }: Props) {
     const result = await togglePublish(recipe.id);
     if (result) {
       toast.success(result.isPublished ? 'Recipe published' : 'Recipe unpublished');
-      refresh();
+      setShouldLoadData(true); // Trigger reload
     }
-  }, [togglePublish, refresh]);
+  }, [togglePublish]);
 
   const handleDelete = useCallback(async (recipe: Recipe) => {
     await deleteRecipe(recipe.id);
     toast.success('Recipe deleted');
-    refresh();
-  }, [deleteRecipe, refresh]);
+    setShouldLoadData(true); // Trigger reload
+  }, [deleteRecipe]);
 
-  const applyFilters = useCallback(() => {
+  const applyModalFilters = useCallback(() => {
     setDifficulty(tempDifficulty);
     setCategoryId(tempCategoryId);
     setFiltersOpen(false);
@@ -266,7 +297,7 @@ export default function RecipesScreen({ navigation }: Props) {
         title="Filters" 
         compact
         primaryLabel="Apply"
-        onPrimary={applyFilters}
+        onPrimary={applyModalFilters}
       >
         {/* Difficulty Filter */}
         <View style={styles.filterSection}>

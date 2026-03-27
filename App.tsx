@@ -9,6 +9,7 @@ import { ToastProvider }    from './src/context/ToastContext';
 import { DebugProvider }    from './src/context/DebugContext';
 import { SettingsProvider } from './src/context/SettingsContext';
 import { I18nProvider }     from './src/context/I18nContext';
+import { DataRefreshProvider } from './src/context/DataRefreshContext';
 import AppNavigator         from './src/navigation/AppNavigator';
 
 function ThemedApp() {
@@ -29,20 +30,23 @@ function ThemedApp() {
 }
 
 // Provider order (outermost → most global):
-//  DebugProvider    — captures global JS errors
-//  ToastProvider    — toast queue
-//  SettingsProvider — persisted local settings
-//  I18nProvider     — translations from API
-//  ThemeProvider    — colors
+//  DebugProvider      — captures global JS errors
+//  ToastProvider      — toast queue
+//  SettingsProvider   — persisted local settings
+//  I18nProvider       — translations from API
+//  DataRefreshProvider — data change notifications
+//  ThemeProvider      — colors
 export default function App() {
   return (
     <DebugProvider>
       <ToastProvider>
         <SettingsProvider>
           <I18nProvider>
-            <ThemeProvider>
-              <ThemedApp />
-            </ThemeProvider>
+            <DataRefreshProvider>
+              <ThemeProvider>
+                <ThemedApp />
+              </ThemeProvider>
+            </DataRefreshProvider>
           </I18nProvider>
         </SettingsProvider>
       </ToastProvider>

@@ -7,7 +7,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { RADIUS, SPACING } from '../../constants/theme';
-import type { Permission, ActionType, ResourceType } from '../../screens/permissions/PermissionsScreen';
+import type { Permission } from '../../types/api.types';
+import type { ActionType } from '../../screens/permissions/PermissionsScreen';
 
 interface ResourceMeta {
   label: string;
@@ -29,6 +30,7 @@ const ACTIONS: { key: ActionType; label: string; icon: React.ComponentProps<type
   { key: 'canCreate', label: 'Create', icon: 'add-circle-outline'},
   { key: 'canEdit',   label: 'Edit',   icon: 'pencil-outline'   },
   { key: 'canDelete', label: 'Delete', icon: 'trash-outline'    },
+  { key: 'canInMenu', label: 'Menu',   icon: 'menu-outline'     },
 ];
 
 export default function PermissionRow({
@@ -39,7 +41,7 @@ export default function PermissionRow({
 
   const hasAnyPermission =
     permission.canView || permission.canCreate ||
-    permission.canEdit || permission.canDelete;
+    permission.canEdit || permission.canDelete || permission.canInMenu;
 
   return (
     <View style={[

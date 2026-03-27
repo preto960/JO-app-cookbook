@@ -91,6 +91,8 @@ export interface Permission {
 }
 
 export interface UpdatePermissionPayload {
+  role: string;
+  resource: string;
   canView?: boolean;
   canCreate?: boolean;
   canEdit?: boolean;
@@ -101,6 +103,7 @@ export interface UpdatePermissionPayload {
 export interface Role {
   id: string;
   name: string;
+  displayName?: string;
   description?: string;
   isSystem?: boolean;
 }

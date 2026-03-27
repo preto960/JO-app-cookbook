@@ -1,9 +1,10 @@
 // src/screens/users/UserFormScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Switch, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
+import { useUsersRefresh } from '../../context/DataRefreshContext';
 import { userService } from '../../services/api';
 import { useApiCall } from '../../hooks/useApiCall';
 import { FormField, SkeletonList, ThemedCard, ModalSheet, StatusBadge } from '../../components';
@@ -31,6 +32,7 @@ export default function UserFormScreen({ navigation, route }: Props) {
   const isEdit = !!userId;
   const { colors } = useTheme();
   const toast = useToast();
+  const { notifyUsersChanged } = useUsersRefresh();
 
   const [email,     setEmail]     = useState('');
   const [firstName, setFirstName] = useState('');
@@ -67,15 +69,36 @@ export default function UserFormScreen({ navigation, route }: Props) {
   });
 
   const { execute: createUser, loading: creating } = useApiCall(userService.create, {
-    onSuccess: () => { toast.success('User created'); navigation.navigate('Users'); },
+    onSuccess: () => { 
+      toast.success('User created');
+      notifyUsersChanged(); // Notificar cambio global
+      navigation.navigate('Users');
+    },
     onError: (e) => toast.error('Create failed', e),
   });
 
   const { execute: updateUser, loading: updating } = useApiCall(userService.update, {
-    onSuccess: () => { toast.success('User updated'); navigation.navigate('Users'); },
+    onSuccess: () => { 
+      toast.success('User updated');
+      notifyUsersChanged(); // Notificar cambio global
+      navigation.navigate('Users');
+    },
     onError: (e) => toast.error('Update failed', e),
   });
 
+  // Función para limpiar el formulario
+  const clearForm = useCallback(() => {
+    setEmail('');
+    setFirstName('');
+    setLastName('');
+    setRole('USER');
+    setPassword('');
+    setIsActive(true);
+    setBio('');
+    setErrors({});
+  }, []);
+
+  // Efecto para configurar navegación
   useEffect(() => {
     navigation.setOptions({
       title: isEdit ? 'Edit user' : 'New user',
@@ -90,9 +113,18 @@ export default function UserFormScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       ),
     });
+  }, [isEdit, colors.textPrimary, navigation]);
+
+  // Efecto para cargar datos iniciales
+  useEffect(() => {
     loadRoles();
-    if (isEdit && userId) loadUser(userId);
-  }, [userId]);
+    if (isEdit && userId) {
+      loadUser(userId);
+    } else {
+      // Si no es edición, limpiar el formulario para un nuevo usuario
+      clearForm();
+    }
+  }, [userId, isEdit, loadRoles, loadUser, clearForm]);
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -120,6 +152,7 @@ export default function UserFormScreen({ navigation, route }: Props) {
       });
     }
   };
+
 
   const saving = creating || updating;
 
@@ -214,7 +247,7 @@ export default function UserFormScreen({ navigation, route }: Props) {
         />
       </ThemedCard>
 
-      {/* Save */}
+      {/* Save button */}
       <TouchableOpacity
         style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
         onPress={handleSubmit}
@@ -224,6 +257,7 @@ export default function UserFormScreen({ navigation, route }: Props) {
           {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create user'}
         </Text>
       </TouchableOpacity>
+
 
       <View style={{ height: SPACING.xl * 2 }} />
 

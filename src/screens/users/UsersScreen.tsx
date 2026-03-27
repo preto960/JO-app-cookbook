@@ -4,8 +4,10 @@ import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
+import { useUsersRefresh } from '../../context/DataRefreshContext';
 import { userService } from '../../services/api';
 import { usePagination } from '../../hooks/usePagination';
 import { useApiCall } from '../../hooks/useApiCall';
@@ -27,15 +29,22 @@ const STATUS_CHIPS = [
   { label: 'Inactive', value: 'inactive' },
 ];
 
-interface Props { navigation: any }
+interface Props { 
+  navigation: any;
+  route?: { params?: { refresh?: boolean } };
+}
 
-export default function UsersScreen({ navigation }: Props) {
+export default function UsersScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const toast = useToast();
+  const { subscribeToUsersChange, notifyUsersChanged } = useUsersRefresh();
 
   const [search, setSearch] = useState('');
   const [role,   setRole]   = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  
+  // Estado para controlar cuándo cargar datos
+  const [shouldLoadData, setShouldLoadData] = useState(false);
 
   const { execute: toggleStatus } = useApiCall(userService.toggleStatus, {
     onError: (e) => toast.error('Action failed', e),
@@ -46,7 +55,7 @@ export default function UsersScreen({ navigation }: Props) {
 
   const {
     items: rawItems, loading, page, totalPages, total,
-    loadPage, refresh, setParams,
+    loadPage, refresh, refreshWithParams, setParams,
   } = usePagination<ApiUser, any>({
     apiFunction: userService.getAll,
     pageSize: 20,
@@ -55,29 +64,54 @@ export default function UsersScreen({ navigation }: Props) {
 
   const items = Array.isArray(rawItems) ? rawItems : [];
 
+  // Efecto que solo se ejecuta cuando shouldLoadData es true
   useEffect(() => {
-    setParams({
+    if (!shouldLoadData) return;
+    
+    const params = {
       ...(search ? { search } : {}),
       ...(role   ? { role }   : {}),
       ...(status ? { status } : {}),
+    };
+    
+    refreshWithParams(params).then(() => {
+      // Resetear la bandera después de la consulta para permitir futuras actualizaciones
+      setShouldLoadData(false);
     });
-  }, [search, role, status]);
+  }, [shouldLoadData, search, role, status, refreshWithParams]);
 
-  useEffect(() => { refresh(); }, [search, role, status]);
+  // Cargar datos cuando la pantalla viene al foco
+  useFocusEffect(
+    useCallback(() => {
+      setShouldLoadData(true);
+      // Limpiar el parámetro para evitar refresh constante
+      if (route?.params?.refresh) {
+        navigation.setParams({ refresh: undefined });
+      }
+    }, [route?.params?.refresh, navigation])
+  );
+
+  // Suscribirse a cambios de usuarios globalmente
+  useEffect(() => {
+    const unsubscribe = subscribeToUsersChange(() => {
+      setShouldLoadData(true); // Trigger reload
+    });
+    return unsubscribe;
+  }, [subscribeToUsersChange]);
 
   const handleToggleStatus = useCallback(async (user: ApiUser) => {
     const result = await toggleStatus(user.id);
     if (result) {
       toast.success(result.isActive ? 'User activated' : 'User deactivated');
-      refresh();
+      notifyUsersChanged(); // Notificar cambio global
     }
-  }, [toggleStatus, refresh]);
+  }, [toggleStatus, toast, notifyUsersChanged]);
 
   const handleDelete = useCallback(async (user: ApiUser) => {
     await deleteUser(user.id);
     toast.success('User deleted');
-    refresh();
-  }, [deleteUser, refresh]);
+    notifyUsersChanged(); // Notificar cambio global
+  }, [deleteUser, toast, notifyUsersChanged]);
 
   const handleChipChange = (groupIndex: number, value: string | null) => {
     if (groupIndex === 0) setRole(value);
@@ -105,7 +139,7 @@ export default function UsersScreen({ navigation }: Props) {
         refreshControl={
           <RefreshControl
             refreshing={loading && items.length > 0}
-            onRefresh={refresh}
+            onRefresh={() => setShouldLoadData(true)}
             tintColor={colors.primary}
           />
         }

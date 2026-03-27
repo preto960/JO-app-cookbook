@@ -343,9 +343,10 @@ export const userService = {
     return data?.user ?? data;
   },
 
-  getRoles: async (): Promise<string[]> => {
+  getRoles: async (): Promise<string[] | Role[]> => {
     const { data } = await api.get('/users/roles');
-    return normalizeArray<string>(data);
+    // El endpoint puede devolver string[] o Role[] dependiendo del backend
+    return Array.isArray(data) ? data : normalizeArray(data);
   },
 
   create: async (payload: CreateUserPayload): Promise<ApiUser> => {
@@ -378,18 +379,48 @@ export const userService = {
 
 // ─── Permission service ────────────────────────────────────────────────────────
 export const permissionService = {
-  getAll: async (role?: string): Promise<Permission[]> => {
-    const { data } = await api.get('/permissions', { params: role ? { role } : undefined });
-    return normalizeArray<Permission>(data);
+  // Obtener todos los permisos del sistema (ADMIN)
+  getAll: async (): Promise<Permission[]> => {
+    const { data } = await api.get('/permissions/');
+    return normalizeArray<Permission>(data.permissions || data);
   },
 
-  update: async (id: string, payload: UpdatePermissionPayload): Promise<Permission> => {
-    const { data } = await api.put<Permission>(`/permissions/${id}`, payload);
+  // Obtener permisos por rol específico (ADMIN)
+  getByRole: async (role: string): Promise<Permission[]> => {
+    const { data } = await api.get(`/permissions/role/${role}`);
+    return normalizeArray<Permission>(data.permissions || data);
+  },
+
+  // Obtener mis permisos (usuario autenticado)
+  getMyPermissions: async (): Promise<Permission[]> => {
+    const { data } = await api.get('/permissions/my-permissions');
+    return normalizeArray<Permission>(data.permissions || data);
+  },
+
+  // Verificar permiso específico
+  checkPermission: async (role: string, resource: string, action: string): Promise<boolean> => {
+    const { data } = await api.get('/permissions/check', { 
+      params: { role, resource, action } 
+    });
+    return data.hasPermission;
+  },
+
+  // Actualizar permiso individual (ADMIN)
+  update: async (payload: UpdatePermissionPayload): Promise<Permission> => {
+    const { data } = await api.put<Permission>('/permissions/', payload);
     return data;
   },
 
-  reset: async (role: string): Promise<void> => {
-    await api.post('/permissions/reset', { role });
+  // Actualización masiva de permisos (ADMIN)
+  bulkUpdate: async (permissions: UpdatePermissionPayload[]): Promise<Permission[]> => {
+    const { data } = await api.put('/permissions/bulk', { permissions });
+    return normalizeArray<Permission>(data.permissions || data);
+  },
+
+  // Resetear todos los permisos a valores por defecto (ADMIN)
+  reset: async (): Promise<Permission[]> => {
+    const { data } = await api.post('/permissions/reset');
+    return normalizeArray<Permission>(data.permissions || data);
   },
 };
 

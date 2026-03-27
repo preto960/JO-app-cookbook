@@ -6,6 +6,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Platform, 
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
+import { useUsersRefresh } from '../../context/DataRefreshContext';
 import { userService } from '../../services/api';
 import { useApiCall } from '../../hooks/useApiCall';
 import {
@@ -23,18 +24,27 @@ export default function UserDetailScreen({ navigation, route }: Props) {
   const { userId } = route.params;
   const { colors } = useTheme();
   const toast = useToast();
+  const { notifyUsersChanged } = useUsersRefresh();
 
   const { data: user, loading, error, execute: loadUser } = useApiCall(userService.getById, {
     onError: (e) => toast.error('Load failed', e),
   });
 
   const { execute: toggleStatus } = useApiCall(userService.toggleStatus, {
-    onSuccess: () => { toast.success('Status updated'); loadUser(userId); },
+    onSuccess: () => { 
+      toast.success('Status updated'); 
+      loadUser(userId);
+      notifyUsersChanged(); // Notificar cambio global
+    },
     onError: (e) => toast.error('Failed', e),
   });
 
   const { execute: deleteUser } = useApiCall(userService.delete, {
-    onSuccess: () => { toast.success('User deleted'); navigation.navigate('Users'); },
+    onSuccess: () => { 
+      toast.success('User deleted');
+      notifyUsersChanged(); // Notificar cambio global
+      navigation.navigate('Users'); 
+    },
     onError: (e) => toast.error('Delete failed', e),
   });
 

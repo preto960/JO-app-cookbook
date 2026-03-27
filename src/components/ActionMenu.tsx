@@ -1,11 +1,10 @@
 // src/components/ActionMenu.tsx
 // A floating action menu triggered by a kebab (⋮) button.
 // Uses Modal + measured anchor position for true cross-platform support.
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, Pressable,
-  StyleSheet, Platform, findNodeHandle, UIManager,
-  Dimensions,
+  StyleSheet, Platform, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -51,24 +50,19 @@ export default function ActionMenu({
       return;
     }
 
-    const handle = findNodeHandle(triggerRef.current);
-    if (!handle) {
-      setOpen(true);
-      return;
-    }
-
-    UIManager.measure(handle, (x, y, width, height, pageX, pageY) => {
+    // Usar measureInWindow para obtener coordenadas absolutas en la pantalla
+    triggerRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
       const screenWidth = Dimensions.get('window').width;
       const screenHeight = Dimensions.get('window').height;
       const menuHeight = filtered.length * ITEM_HEIGHT + 2;
 
       // Position menu below trigger, aligned to right edge
-      let top = pageY + height + 4;
-      let right = screenWidth - (pageX + width);
+      let top = y + height + 4;
+      let right = screenWidth - (x + width);
 
       // Flip up if not enough space below
       if (top + menuHeight > screenHeight - 20) {
-        top = pageY - menuHeight - 4;
+        top = y - menuHeight - 4;
       }
 
       // Clamp right so menu doesn't go off-screen
@@ -160,6 +154,7 @@ const styles = StyleSheet.create({
   trigger: {
     borderRadius: RADIUS.sm,
     alignItems: 'center', justifyContent: 'center',
+    marginRight: 16
   },
   backdrop: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,

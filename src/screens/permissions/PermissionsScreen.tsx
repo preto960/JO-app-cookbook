@@ -1,18 +1,21 @@
 // src/screens/permissions/PermissionsScreen.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl,
+  TouchableOpacity, RefreshControl, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useApiCall } from '../../hooks/useApiCall';
+import { userService, permissionService } from '../../services/api';
 import { RADIUS, SPACING } from '../../constants/theme';
 import ThemedCard from '../../components/ThemedCard';
 import PermissionRow from '../../components/permissions/PermissionRow';
 import RoleBadge from '../../components/permissions/RoleBadge';
 import EmptyState from '../../components/permissions/EmptyState';
+import type { Permission, Role } from '../../types/api.types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ResourceType =
@@ -25,26 +28,10 @@ export type ResourceType =
   | 'TRANSLATIONS'
   | 'RECIPE_BOOK';
 
-export type ActionType = 'canView' | 'canCreate' | 'canEdit' | 'canDelete';
+export type ActionType = 'canView' | 'canCreate' | 'canEdit' | 'canDelete' | 'canInMenu';
 
-export interface Permission {
-  id: string;
-  role: string;
-  resource: ResourceType;
-  resourceLabel: string;
-  resourceDescription?: string;
-  canView: boolean;
-  canCreate: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  isDynamic: boolean;
-  displayOrder: number;
-}
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const ROLES = ['USER', 'ADMIN', 'DEVELOPER', 'MODERATOR'];
-
-const RESOURCE_META: Record<ResourceType, { label: string; description: string; icon: React.ComponentProps<typeof Ionicons>['name'] }> = {
+// ─── Resource metadata ────────────────────────────────────────────────────────
+const RESOURCE_META: Record<string, { label: string; description: string; icon: React.ComponentProps<typeof Ionicons>['name'] }> = {
   DASHBOARD:    { label: 'Dashboard',    description: 'Overview statistics and activity',   icon: 'grid-outline'         },
   USERS:        { label: 'Users',        description: 'User accounts management',           icon: 'people-outline'       },
   ROLES:        { label: 'Roles',        description: 'Role assignment and management',     icon: 'shield-outline'       },
@@ -55,34 +42,6 @@ const RESOURCE_META: Record<ResourceType, { label: string; description: string; 
   RECIPE_BOOK:  { label: 'Recipe Book',  description: 'Recipes, categories and ratings',   icon: 'restaurant-outline'   },
 };
 
-function buildMockPermissions(): Permission[] {
-  const resources = Object.keys(RESOURCE_META) as ResourceType[];
-  const result: Permission[] = [];
-  let order = 0;
-
-  for (const role of ROLES) {
-    for (const resource of resources) {
-      const isAdmin = role === 'ADMIN';
-      const isDev   = role === 'DEVELOPER';
-      const isMod   = role === 'MODERATOR';
-
-      result.push({
-        id:                  `${role}-${resource}`,
-        role,
-        resource,
-        resourceLabel:       RESOURCE_META[resource].label,
-        resourceDescription: RESOURCE_META[resource].description,
-        canView:   true,
-        canCreate: isAdmin || isDev || (isMod && resource === 'RECIPE_BOOK'),
-        canEdit:   isAdmin || isDev || (isMod && resource === 'RECIPE_BOOK'),
-        canDelete: isAdmin,
-        isDynamic: false,
-        displayOrder: order++,
-      });
-    }
-  }
-  return result;
-}
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function PermissionsScreen() {
@@ -90,20 +49,122 @@ export default function PermissionsScreen() {
   const { isSuperAdmin }  = useAuth();
   const toast             = useToast();
 
-  const [permissions, setPermissions] = useState<Permission[]>(buildMockPermissions);
-  const [selectedRole, setSelectedRole] = useState<string>(ROLES[0]);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [saving, setSaving]             = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string>('');
+  const [saving, setSaving] = useState<string | null>(null);
+
+  // API calls
+  const { execute: loadRoles } = useApiCall(userService.getRoles, {
+    onSuccess: (data: string[] | Role[]) => {
+      let rolesData: Role[] = [];
+      
+      try {
+        // Verificar si la respuesta es string[] o Role[]
+        if (Array.isArray(data) && data.length > 0) {
+          if (typeof data[0] === 'string') {
+            // Es string[], convertir a Role[]
+            rolesData = (data as string[]).map((name, index) => ({
+              id: (index + 1).toString(),
+              name: String(name), // Asegurar que sea string
+              description: `${name} role`,
+            }));
+          } else {
+            // Ya es Role[], pero asegurar que name sea string
+            rolesData = (data as Role[]).map(role => ({
+              ...role,
+              name: String(role.name || role.displayName || 'UNKNOWN'),
+            }));
+          }
+        }
+        
+        setRoles(rolesData);
+        if (rolesData.length > 0 && !selectedRole) {
+          setSelectedRole(String(rolesData[0].name));
+        }
+      } catch (error) {
+        console.error('Error processing roles:', error);
+        toast.error('Error processing roles', 'Using fallback roles');
+        
+        // Fallback roles
+        const fallbackRoles = [
+          { id: '1', name: 'USER', description: 'Regular user' },
+          { id: '2', name: 'ADMIN', description: 'Administrator' },
+        ];
+        setRoles(fallbackRoles);
+        setSelectedRole('USER');
+      }
+    },
+    onError: (error) => {
+      toast.error('Failed to load roles', error.message);
+      
+      // Fallback roles en caso de error
+      const fallbackRoles = [
+        { id: '1', name: 'USER', description: 'Regular user' },
+        { id: '2', name: 'ADMIN', description: 'Administrator' },
+      ];
+      setRoles(fallbackRoles);
+      setSelectedRole('USER');
+    },
+  });
+
+  const { execute: loadPermissions, loading: loadingPermissions } = useApiCall(permissionService.getByRole, {
+    onSuccess: setPermissions,
+    onError: (error) => toast.error('Failed to load permissions', error.message),
+  });
+
+  const { execute: updatePermission } = useApiCall(permissionService.update, {
+    onSuccess: (updatedPermission) => {
+      // Recargar permisos del rol actual
+      if (selectedRole) {
+        loadPermissions(selectedRole);
+      }
+      toast.success('Permission updated', 'Changes saved successfully.');
+    },
+    onError: (error) => toast.error('Failed to update permission', error.message),
+  });
+
+  const { execute: resetPermissions } = useApiCall(permissionService.reset, {
+    onSuccess: () => {
+      // Recargar permisos del rol actual
+      if (selectedRole) {
+        loadPermissions(selectedRole);
+      }
+      toast.success('Permissions reset', 'All permissions have been reset to default values.');
+    },
+    onError: (error) => toast.error('Failed to reset permissions', error.message),
+  });
+
+  // Load data on mount
+  useEffect(() => {
+    loadRoles();
+  }, []);
+
+  // Load permissions when role changes
+  useEffect(() => {
+    if (selectedRole && typeof selectedRole === 'string') {
+      loadPermissions(selectedRole);
+    }
+  }, [selectedRole, loadPermissions]);
 
   const filtered = permissions.filter(p => p.role === selectedRole);
 
+  // Verificar que selectedRole no sea un objeto
+  React.useEffect(() => {
+    if (selectedRole && typeof selectedRole === 'object') {
+      console.error('selectedRole is an object:', selectedRole);
+      // Si selectedRole es un objeto, extraer el name
+      const roleName = (selectedRole as any).name || (selectedRole as any).displayName || 'USER';
+      setSelectedRole(roleName);
+    }
+  }, [selectedRole]);
+
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await new Promise(r => setTimeout(r, 900));
-    setPermissions(buildMockPermissions());
-    setRefreshing(false);
-    toast.info('Permissions refreshed');
-  }, [toast]);
+    if (selectedRole) {
+      await loadPermissions(selectedRole);
+      toast.info('Permissions refreshed');
+    }
+  }, [selectedRole, loadPermissions, toast]);
 
   const toggleAction = useCallback((permId: string, action: ActionType) => {
     setPermissions(prev =>
@@ -112,11 +173,39 @@ export default function PermissionsScreen() {
   }, []);
 
   const saveRow = useCallback(async (permId: string) => {
+    const permission = permissions.find(p => p.id === permId);
+    if (!permission) return;
+
     setSaving(permId);
-    await new Promise(r => setTimeout(r, 700));
+    
+    const payload = {
+      role: permission.role,
+      resource: permission.resource,
+      canView: permission.canView,
+      canCreate: permission.canCreate,
+      canEdit: permission.canEdit,
+      canDelete: permission.canDelete,
+      canInMenu: permission.canInMenu,
+    };
+
+    await updatePermission(payload);
     setSaving(null);
-    toast.success('Permission saved', 'Changes applied successfully.');
-  }, [toast]);
+  }, [permissions, updatePermission]);
+
+  const handleResetPermissions = useCallback(() => {
+    Alert.alert(
+      'Reset Permissions',
+      'This will reset ALL permissions to their default values. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Reset', 
+          style: 'destructive', 
+          onPress: () => resetPermissions()
+        },
+      ]
+    );
+  }, [resetPermissions]);
 
   if (!isSuperAdmin) {
     return (
@@ -126,6 +215,15 @@ export default function PermissionsScreen() {
         <Text style={[styles.blockedSub, { color: colors.textSecondary }]}>
           This panel is only available to the Super Admin.
         </Text>
+      </View>
+    );
+  }
+
+  // No renderizar hasta que tengamos un rol válido
+  if (!selectedRole || typeof selectedRole !== 'string') {
+    return (
+      <View style={[styles.blocked, { backgroundColor: colors.background }]}>
+        <Text style={[styles.blockedTitle, { color: colors.textPrimary }]}>Loading...</Text>
       </View>
     );
   }
@@ -142,24 +240,24 @@ export default function PermissionsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.roleBarContent}
         >
-          {ROLES.map(role => (
+          {roles.map(role => (
             <TouchableOpacity
-              key={role}
-              onPress={() => setSelectedRole(role)}
+              key={role.id}
+              onPress={() => setSelectedRole(role.name)}
               activeOpacity={0.75}
               style={[
                 styles.roleChip,
                 {
-                  backgroundColor: selectedRole === role ? colors.primary : colors.surfaceElevated,
-                  borderColor:     selectedRole === role ? colors.primary : colors.border,
+                  backgroundColor: selectedRole === role.name ? colors.primary : colors.surfaceElevated,
+                  borderColor:     selectedRole === role.name ? colors.primary : colors.border,
                 },
               ]}
             >
               <Text style={[
                 styles.roleChipText,
-                { color: selectedRole === role ? colors.background : colors.textSecondary },
+                { color: selectedRole === role.name ? colors.background : colors.textSecondary },
               ]}>
-                {role}
+                {role.name}
               </Text>
             </TouchableOpacity>
           ))}
@@ -168,10 +266,18 @@ export default function PermissionsScreen() {
 
       {/* ── Summary badge ── */}
       <View style={[styles.summaryBar, { backgroundColor: colors.background }]}>
-        <RoleBadge role={selectedRole} />
+        <RoleBadge role={selectedRole || 'USER'} />
         <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
           {filtered.length} resource{filtered.length !== 1 ? 's' : ''}
         </Text>
+        <TouchableOpacity
+          onPress={handleResetPermissions}
+          style={[styles.resetBtn, { backgroundColor: colors.dangerDim }]}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="refresh-outline" size={14} color={colors.danger} />
+          <Text style={[styles.resetBtnText, { color: colors.danger }]}>Reset All</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Permission list ── */}
@@ -181,7 +287,7 @@ export default function PermissionsScreen() {
         showsVerticalScrollIndicator={true}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={loadingPermissions}
             onRefresh={onRefresh}
             tintColor={colors.primary}
           />
@@ -199,7 +305,11 @@ export default function PermissionsScreen() {
                   permission={perm}
                   isLast={idx === filtered.length - 1}
                   isSaving={saving === perm.id}
-                  resourceMeta={RESOURCE_META[perm.resource]}
+                  resourceMeta={RESOURCE_META[perm.resource] || { 
+                    label: perm.resourceLabel || perm.resource, 
+                    description: perm.resourceDescription || '', 
+                    icon: 'document-outline' as any 
+                  }}
                   onToggle={toggleAction}
                   onSave={saveRow}
                 />
@@ -250,6 +360,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   summaryText: { fontSize: 12 },
+
+  resetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+  },
+  resetBtnText: { fontSize: 11, fontWeight: '600' },
 
   listContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xs },
 });

@@ -270,7 +270,7 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
             <Text style={[styles.instructions, { color: colors.textPrimary }]}>{recipe.instructions}</Text>
           </View>
         </ThemedCard>
-
+        <View style={{ marginBottom: SPACING.md }} />
       </View>
 
       <View style={{ height: SPACING.xl }} />

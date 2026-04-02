@@ -1,7 +1,7 @@
 // src/screens/users/UserFormScreen.tsx
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Switch, Text, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useUsersRefresh } from '../../context/DataRefreshContext';

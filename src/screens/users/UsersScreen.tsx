@@ -1,5 +1,5 @@
 // src/screens/users/UsersScreen.tsx
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, RefreshControl,
@@ -29,7 +29,7 @@ const STATUS_CHIPS = [
   { label: 'Inactive', value: 'inactive' },
 ];
 
-interface Props { 
+interface Props {
   navigation: any;
   route?: { params?: { refresh?: boolean } };
 }
@@ -39,12 +39,9 @@ export default function UsersScreen({ navigation, route }: Props) {
   const toast = useToast();
   const { subscribeToUsersChange, notifyUsersChanged } = useUsersRefresh();
 
-  const [search, setSearch] = useState('');
-  const [role,   setRole]   = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  
-  // Estado para controlar cuándo cargar datos
-  const [shouldLoadData, setShouldLoadData] = useState(false);
+  const [search, setSearch] = React.useState('');
+  const [role,   setRole]   = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string | null>(null);
 
   const { execute: toggleStatus } = useApiCall(userService.toggleStatus, {
     onError: (e) => toast.error('Action failed', e),
@@ -55,72 +52,62 @@ export default function UsersScreen({ navigation, route }: Props) {
 
   const {
     items: rawItems, loading, page, totalPages, total,
-    loadPage, refresh, refreshWithParams, setParams,
+    loadPage, refreshWithParams,
   } = usePagination<ApiUser, any>({
     apiFunction: userService.getAll,
     pageSize: 20,
+    initialFetch: 'manual',
     onError: (e) => toast.error('Load failed', e),
   });
 
   const items = Array.isArray(rawItems) ? rawItems : [];
 
-  // Efecto que solo se ejecuta cuando shouldLoadData es true
-  useEffect(() => {
-    if (!shouldLoadData) return;
-    
-    const params = {
-      ...(search ? { search } : {}),
-      ...(role   ? { role }   : {}),
-      ...(status ? { status } : {}),
-    };
-    
-    refreshWithParams(params).then(() => {
-      // Resetear la bandera después de la consulta para permitir futuras actualizaciones
-      setShouldLoadData(false);
-    });
-  }, [shouldLoadData, search, role, status, refreshWithParams]);
+  const buildParams = useCallback(() => ({
+    ...(search ? { search } : {}),
+    ...(role   ? { role }   : {}),
+    ...(status ? { status } : {}),
+  }), [search, role, status]);
 
-  // Cargar datos cuando la pantalla viene al foco
   useFocusEffect(
     useCallback(() => {
-      setShouldLoadData(true);
-      // Limpiar el parámetro para evitar refresh constante
+      refreshWithParams(buildParams());
       if (route?.params?.refresh) {
         navigation.setParams({ refresh: undefined });
       }
-    }, [route?.params?.refresh, navigation])
+    }, [buildParams, refreshWithParams, route?.params?.refresh, navigation]),
   );
 
-  // Suscribirse a cambios de usuarios globalmente
   useEffect(() => {
     const unsubscribe = subscribeToUsersChange(() => {
-      setShouldLoadData(true); // Trigger reload
+      refreshWithParams(buildParams());
     });
     return unsubscribe;
-  }, [subscribeToUsersChange]);
+  }, [subscribeToUsersChange, refreshWithParams, buildParams]);
 
   const handleToggleStatus = useCallback(async (user: ApiUser) => {
     const result = await toggleStatus(user.id);
     if (result) {
       toast.success(result.isActive ? 'User activated' : 'User deactivated');
-      notifyUsersChanged(); // Notificar cambio global
+      notifyUsersChanged();
     }
   }, [toggleStatus, toast, notifyUsersChanged]);
 
   const handleDelete = useCallback(async (user: ApiUser) => {
     await deleteUser(user.id);
     toast.success('User deleted');
-    notifyUsersChanged(); // Notificar cambio global
+    notifyUsersChanged();
   }, [deleteUser, toast, notifyUsersChanged]);
 
   const handleChipChange = (groupIndex: number, value: string | null) => {
-    if (groupIndex === 0) setRole(value);
-    else if (groupIndex === 1) setStatus(value);
+    if (groupIndex === 0) {
+      setRole(value);
+    } else if (groupIndex === 1) {
+      setStatus(value);
+    }
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Unified filter bar */}
       <SharedFilterBar
         searchValue={search}
         onSearchChange={setSearch}
@@ -131,7 +118,6 @@ export default function UsersScreen({ navigation, route }: Props) {
         onAction={() => navigation.navigate('UserForm')}
       />
 
-      {/* Lista */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.listContent}
@@ -139,12 +125,11 @@ export default function UsersScreen({ navigation, route }: Props) {
         refreshControl={
           <RefreshControl
             refreshing={loading && items.length > 0}
-            onRefresh={() => setShouldLoadData(true)}
+            onRefresh={() => refreshWithParams(buildParams())}
             tintColor={colors.primary}
           />
         }
       >
-        {/* Section header */}
         <View style={styles.sectionRow}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Users</Text>
           {total > 0 && (
@@ -174,14 +159,12 @@ export default function UsersScreen({ navigation, route }: Props) {
                 onPress={() => navigation.navigate('UserDetail', { userId: user.id })}
                 activeOpacity={0.7}
               >
-                {/* Avatar */}
                 <View style={[styles.avatar, { backgroundColor: colors.primaryDim }]}>
                   <Text style={[styles.avatarText, { color: colors.primary }]}>
                     {user.firstName?.[0]?.toUpperCase() ?? 'U'}
                   </Text>
                 </View>
 
-                {/* Info */}
                 <View style={styles.userInfo}>
                   <Text style={[styles.userName, { color: colors.textPrimary }]} numberOfLines={1}>
                     {user.firstName} {user.lastName}
@@ -191,7 +174,6 @@ export default function UsersScreen({ navigation, route }: Props) {
                   </Text>
                 </View>
 
-                {/* Badges + actions */}
                 <View style={styles.userRight}>
                   <View style={styles.badgesCol}>
                     <StatusBadge label={user.role} auto size="sm" />

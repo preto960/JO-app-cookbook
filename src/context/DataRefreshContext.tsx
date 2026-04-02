@@ -1,12 +1,14 @@
 // src/context/DataRefreshContext.tsx
 // Contexto para notificar cambios en datos y refrescar listas automáticamente
-import React, { createContext, useContext, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useCallback, useRef, useState } from 'react';
 
-type RefreshEvent = 'users' | 'recipes' | 'permissions';
+type RefreshEvent = 'users' | 'recipes' | 'permissions' | 'shoppingLists';
 
 interface DataRefreshContextType {
   notifyDataChange: (event: RefreshEvent) => void;
   subscribeToDataChange: (event: RefreshEvent, callback: () => void) => () => void;
+  triggerRefresh: (event: RefreshEvent) => void; // Alias for notifyDataChange
+  refreshKey?: Record<string, number>; // For useApiQuery dependencies
 }
 
 const DataRefreshContext = createContext<DataRefreshContextType | null>(null);
@@ -16,9 +18,23 @@ export function DataRefreshProvider({ children }: { children: React.ReactNode })
     users: new Set(),
     recipes: new Set(),
     permissions: new Set(),
+    shoppingLists: new Set(),
+  });
+  
+  const [refreshKeys, setRefreshKeys] = useState<Record<string, number>>({
+    users: 0,
+    recipes: 0,
+    permissions: 0,
+    shoppingLists: 0,
   });
 
   const notifyDataChange = useCallback((event: RefreshEvent) => {
+    // Increment refresh key for useApiQuery dependencies
+    setRefreshKeys(prev => ({
+      ...prev,
+      [event]: (prev[event] || 0) + 1
+    }));
+    
     const listeners = listenersRef.current[event];
     listeners.forEach(callback => {
       try {
@@ -40,7 +56,12 @@ export function DataRefreshProvider({ children }: { children: React.ReactNode })
   }, []);
 
   return (
-    <DataRefreshContext.Provider value={{ notifyDataChange, subscribeToDataChange }}>
+    <DataRefreshContext.Provider value={{ 
+      notifyDataChange, 
+      subscribeToDataChange,
+      triggerRefresh: notifyDataChange, // Alias
+      refreshKey: refreshKeys
+    }}>
       {children}
     </DataRefreshContext.Provider>
   );

@@ -4,7 +4,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../context/ThemeContext';
 import { RADIUS, SPACING } from '../../constants/theme';
 import type { Permission } from '../../types/api.types';

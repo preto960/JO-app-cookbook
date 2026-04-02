@@ -1,7 +1,7 @@
 // App.tsx — Updated: adds I18nProvider
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import { View, StyleSheet, StatusBar } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider }     from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
@@ -15,13 +15,9 @@ import AppNavigator         from './src/navigation/AppNavigator';
 function ThemedApp() {
   const { colors, isDark } = useTheme();
 
-  if (Platform.OS === 'web') {
-    document.body.style.backgroundColor = colors.background;
-  }
-
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <AuthProvider>
         <AppNavigator />
       </AuthProvider>
@@ -38,19 +34,21 @@ function ThemedApp() {
 //  ThemeProvider      — colors
 export default function App() {
   return (
-    <DebugProvider>
-      <ToastProvider>
-        <SettingsProvider>
-          <I18nProvider>
-            <DataRefreshProvider>
-              <ThemeProvider>
-                <ThemedApp />
-              </ThemeProvider>
-            </DataRefreshProvider>
-          </I18nProvider>
-        </SettingsProvider>
-      </ToastProvider>
-    </DebugProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <DebugProvider>
+        <ToastProvider>
+          <SettingsProvider>
+            <I18nProvider>
+              <DataRefreshProvider>
+                <ThemeProvider>
+                  <ThemedApp />
+                </ThemeProvider>
+              </DataRefreshProvider>
+            </I18nProvider>
+          </SettingsProvider>
+        </ToastProvider>
+      </DebugProvider>
+    </GestureHandlerRootView>
   );
 }
 

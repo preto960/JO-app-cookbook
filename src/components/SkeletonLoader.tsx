@@ -32,10 +32,12 @@ export function SkeletonBox({ width = '100%', height = 16, radius = RADIUS.sm, s
   const bg = isDark ? colors.surfaceElevated : colors.border;
 
   return (
-    <Animated.View style={[
-      { width, height, borderRadius: radius, backgroundColor: bg, opacity },
-      style,
-    ]} />
+    <Animated.View
+      style={[
+        { width, height, borderRadius: radius, backgroundColor: bg, opacity },
+        style,
+      ] as unknown as ViewStyle}
+    />
   );
 }
 

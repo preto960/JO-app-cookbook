@@ -4,7 +4,7 @@ import {
   View, Text, StyleSheet, Modal, ScrollView,
   TouchableOpacity, Pressable, Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useDebug, HttpLog, ErrorLog, CustomLog } from '../context/DebugContext';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth, fullName } from '../context/AuthContext';

@@ -7,7 +7,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../context/ThemeContext';
 import { useRoles } from '../hooks/useRoles';
 import { SkeletonBox } from './SkeletonLoader';

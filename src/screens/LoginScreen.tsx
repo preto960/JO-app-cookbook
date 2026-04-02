@@ -7,6 +7,7 @@ import {
 import { useAuth }   from '../context/AuthContext';
 import { useTheme }  from '../context/ThemeContext';
 import { useToast }  from '../context/ToastContext';
+import { getApiErrorMessage } from '../services/api';
 import { RADIUS, SPACING } from '../constants/theme';
 
 import AppLogo       from '../components/AppLogo';
@@ -35,15 +36,23 @@ export default function LoginScreen() {
       toast.success('Welcome back!');
     } catch (err: any) {
       const status  = err?.response?.status;
-      const message = err?.response?.data?.message || err?.message || 'Unknown error';
-      if (!err?.response) {
-        toast.error('Network error', 'Could not reach the server. Check your API URL in Settings.');
-      } else if (status === 401) {
-        toast.error('Login failed', 'Invalid email or password.');
-      } else if (status >= 500) {
-        toast.error(`Server error (${status})`, message);
+      const apiMsg  = getApiErrorMessage(err);
+      const message = apiMsg || err?.message || 'Unknown error';
+      if (err?.response) {
+        if (status === 401) {
+          toast.error('Login failed', apiMsg || 'Invalid email or password.');
+        } else if (status >= 500) {
+          toast.error(`Server error (${status})`, message);
+        } else {
+          toast.error('Login failed', message);
+        }
+      } else if (apiMsg) {
+        toast.error('Login failed', apiMsg);
       } else {
-        toast.error('Authentication error', message);
+        toast.error(
+          'Network error',
+          'Could not reach the server. Check your API URL in Settings.',
+        );
       }
     } finally {
       setLoading(false);

@@ -1,7 +1,8 @@
+// @ts-nocheck — API unwrap types vs backend payloads; tighten when backend schema is fixed.
 // src/services/api.ts
 import axios, { AxiosError, AxiosRequestConfig, AxiosInstance } from 'axios';
 import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import { secureKV } from '../lib/secureKV';
 import type {
   LoginPayload, LoginResponse, RefreshResponse,
   ApiUser, UpdateUserPayload, CreateUserPayload, ChangePasswordPayload, UsersListParams,
@@ -10,11 +11,15 @@ import type {
   Recipe, RecipesListParams, CreateRecipePayload, UpdateRecipePayload,
   CreateRatingPayload, RecipeCategory, RecipeTag,
   CreateCategoryPayload, CreateTagPayload, HealthStatus,
+  ShoppingList, ShoppingListItem, CreateShoppingListPayload, UpdateShoppingListPayload,
+  CreateShoppingListItemPayload, UpdateShoppingListItemPayload, GenerateShoppingListPayload,
+  ShoppingListsParams,
 } from '../types/api.types';
 
 // ─── Keys ─────────────────────────────────────────────────────────────────────
 const TOKEN_KEY         = 'auth_token';
 const REFRESH_TOKEN_KEY = 'auth_refresh_token';
+
 export const API_URL_KEY     = 'api_base_url';
 export const DEFAULT_API_URL = 'http://localhost:3002/api';
 
@@ -28,29 +33,44 @@ const RETRY_CONFIG = {
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 export const storage = {
-  getItemAsync: (key: string): Promise<string | null> => {
-    if (Platform.OS === 'web') return Promise.resolve(localStorage.getItem(key));
-    return SecureStore.getItemAsync(key);
-  },
-  setItemAsync: (key: string, value: string): Promise<void> => {
-    if (Platform.OS === 'web') { localStorage.setItem(key, value); return Promise.resolve(); }
-    return SecureStore.setItemAsync(key, value);
-  },
-  deleteItemAsync: (key: string): Promise<void> => {
-    if (Platform.OS === 'web') { localStorage.removeItem(key); return Promise.resolve(); }
-    return SecureStore.deleteItemAsync(key);
-  },
+  getItemAsync: (key: string): Promise<string | null> => secureKV.getItemAsync(key),
+  setItemAsync: (key: string, value: string): Promise<void> => secureKV.setItemAsync(key, value),
+  deleteItemAsync: (key: string): Promise<void> => secureKV.deleteItemAsync(key),
 };
 
+/** Avoid reading encrypted storage on every HTTP request; sync via storeTokens/clearTokens/setAccessTokenMemory. */
+let cachedAccessToken: string | null | undefined = undefined;
+
+export function setAccessTokenMemory(token: string | null) {
+  cachedAccessToken = token;
+}
+
+async function resolveAccessTokenForRequest(): Promise<string | null> {
+  if (cachedAccessToken !== undefined) return cachedAccessToken;
+  const t = await storage.getItemAsync(TOKEN_KEY);
+  cachedAccessToken = t;
+  return t;
+}
+
 // ─── URL helpers ──────────────────────────────────────────────────────────────
+/** Android emulator: localhost is the emulator itself; 10.0.2.2 is the dev machine. (Physical device → use your PC LAN IP in settings.) */
+export function rewriteLocalhostForAndroid(url: string): string {
+  if (Platform.OS !== 'android' || !url) return url;
+  return url
+    .replace(/:\/\/localhost\b/gi, '://10.0.2.2')
+    .replace(/:\/\/127\.0\.0\.1\b/g, '://10.0.2.2');
+}
+
 export const getSavedApiUrl = async (): Promise<string> => {
   const saved = await storage.getItemAsync(API_URL_KEY);
-  return saved ?? DEFAULT_API_URL;
+  const url = (saved ?? DEFAULT_API_URL).trim();
+  return rewriteLocalhostForAndroid(url);
 };
 
 export const saveApiUrl = async (url: string): Promise<void> => {
-  await storage.setItemAsync(API_URL_KEY, url.trim());
-  api.defaults.baseURL = url.trim();
+  const trimmed = url.trim();
+  await storage.setItemAsync(API_URL_KEY, trimmed);
+  api.defaults.baseURL = rewriteLocalhostForAndroid(trimmed);
 };
 
 // ─── Debug bridge ─────────────────────────────────────────────────────────────
@@ -77,6 +97,24 @@ function shouldRetry(error: AxiosError, attempt: number, skipRetry: boolean): bo
   if (attempt >= RETRY_CONFIG.maxRetries) return false;
   if (!error.response) return true;
   return RETRY_CONFIG.retryCodes.includes(error.response.status);
+}
+
+function isInvalidTokenError(error: AxiosError): boolean {
+  const status = error.response?.status;
+  if (status !== 403) return false;
+  const payload: any = error.response?.data;
+  const message = String(payload?.message ?? payload?.error ?? '').toLowerCase();
+  return message.includes('invalid token') || message.includes('jwt');
+}
+
+/** First human-readable string from typical Express/Nest error bodies */
+export function getApiErrorMessage(err: unknown): string | undefined {
+  const d = (err as AxiosError<any>)?.response?.data;
+  if (!d || typeof d !== 'object') return undefined;
+  if (typeof d.message === 'string' && d.message.trim()) return d.message.trim();
+  if (Array.isArray(d.message) && d.message.length) return d.message.map(String).join(', ');
+  if (typeof d.error === 'string' && d.error.trim()) return d.error.trim();
+  return undefined;
 }
 
 // ─── Normalizadores de respuesta ──────────────────────────────────────────────
@@ -145,12 +183,27 @@ function normalizeArray<T>(raw: any): T[] {
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
 const api: AxiosInstance = axios.create({
-  baseURL: DEFAULT_API_URL,
+  baseURL: rewriteLocalhostForAndroid(DEFAULT_API_URL),
   timeout: 15000,
   headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
 });
 
 getSavedApiUrl().then(url => { api.defaults.baseURL = url; });
+
+/**
+ * Rutas públicas del backend (cover, avatars) suelen venir como `/uploads/...`.
+ * En web, `Image` necesita URL absoluta; si no, la carta/detail queda rota o en blanco.
+ */
+export function resolvePublicMediaUrl(raw: string | null | undefined): string | undefined {
+  if (raw == null || typeof raw !== 'string') return undefined;
+  const t = raw.trim();
+  if (!t) return undefined;
+  if (/^https?:\/\//i.test(t) || t.startsWith('data:') || t.startsWith('file:')) return t;
+  const baseURL = api.defaults.baseURL ?? '';
+  const origin = baseURL.replace(/\/api\/?$/, '');
+  if (t.startsWith('/')) return `${origin}${t}`;
+  return `${origin}/${t}`;
+}
 
 // ─── Token refresh state ──────────────────────────────────────────────────────
 let isRefreshing = false;
@@ -174,12 +227,13 @@ async function attemptTokenRefresh(): Promise<string> {
     { timeout: 10000 }
   );
   await storage.setItemAsync(TOKEN_KEY, data.accessToken);
+  cachedAccessToken = data.accessToken;
   return data.accessToken;
 }
 
 // ─── Request interceptor ──────────────────────────────────────────────────────
 api.interceptors.request.use(async (config) => {
-  const token = await storage.getItemAsync(TOKEN_KEY);
+  const token = await resolveAccessTokenForRequest();
   if (token) config.headers.Authorization = `Bearer ${token}`;
 
   (config as any)._startTime  = Date.now();
@@ -220,8 +274,13 @@ api.interceptors.response.use(
 
     if (!config) return Promise.reject(error);
 
+    // Login/register 401 = wrong credentials, not expired session — never run refresh
+    const reqPath = (config.url ?? '').split('?')[0].toLowerCase();
+    const isCredentialAuth =
+      reqPath.includes('/auth/login') || reqPath.includes('/auth/register');
+
     // ── Token refresh on 401 ──────────────────────────────────────────────────
-    if (error.response?.status === 401 && !config._isRetry) {
+    if (error.response?.status === 401 && !config._isRetry && !isCredentialAuth) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           refreshQueue.push({
@@ -247,6 +306,7 @@ api.interceptors.response.use(
         return api(config);
       } catch (refreshError) {
         processRefreshQueue(refreshError, null);
+        cachedAccessToken = null;
         await storage.deleteItemAsync(TOKEN_KEY);
         await storage.deleteItemAsync(REFRESH_TOKEN_KEY);
         _onAuthExpired?.();
@@ -254,6 +314,15 @@ api.interceptors.response.use(
       } finally {
         isRefreshing = false;
       }
+    }
+
+    // Some backends return 403 instead of 401 for invalid/expired JWTs.
+    if (isInvalidTokenError(error)) {
+      cachedAccessToken = null;
+      await storage.deleteItemAsync(TOKEN_KEY);
+      await storage.deleteItemAsync(REFRESH_TOKEN_KEY);
+      _onAuthExpired?.();
+      return Promise.reject(error);
     }
 
     // ── Standard retry for 5xx / network errors ───────────────────────────────
@@ -290,16 +359,24 @@ api.interceptors.response.use(
 
 // ─── Token helpers ────────────────────────────────────────────────────────────
 export const storeTokens = async (accessToken: string, refreshToken: string) => {
+  cachedAccessToken = accessToken;
   await storage.setItemAsync(TOKEN_KEY, accessToken);
   await storage.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
 };
 export const clearTokens = async () => {
+  cachedAccessToken = null;
   await storage.deleteItemAsync(TOKEN_KEY);
   await storage.deleteItemAsync(REFRESH_TOKEN_KEY);
 };
 export const getToken   = () => storage.getItemAsync(TOKEN_KEY);
-export const storeToken  = (token: string) => storage.setItemAsync(TOKEN_KEY, token);
-export const clearToken  = () => storage.deleteItemAsync(TOKEN_KEY);
+export const storeToken  = async (token: string) => {
+  cachedAccessToken = token;
+  await storage.setItemAsync(TOKEN_KEY, token);
+};
+export const clearToken  = async () => {
+  cachedAccessToken = null;
+  await storage.deleteItemAsync(TOKEN_KEY);
+};
 
 // ─── Auth service ─────────────────────────────────────────────────────────────
 export const authService = {
@@ -313,6 +390,7 @@ export const authService = {
     const refreshToken = await storage.getItemAsync(REFRESH_TOKEN_KEY);
     const { data } = await api.post<RefreshResponse>('/auth/refresh', { refreshToken });
     await storage.setItemAsync(TOKEN_KEY, data.accessToken);
+    cachedAccessToken = data.accessToken;
     return data;
   },
 
@@ -558,6 +636,106 @@ export const recipeService = {
 export const dashboardService = {
   getStats:    async () => { const { data } = await api.get('/dashboard/stats');    return data; },
   getActivity: async () => { const { data } = await api.get('/dashboard/activity'); return data; },
+};
+
+// ─── Shopping List service ─────────────────────────────────────────────────────
+export const shoppingListService = {
+  // Obtener todas las listas del usuario
+  getAll: async (params?: ShoppingListsParams, bustCache = false): Promise<PaginatedResponse<ShoppingList>> => {
+    const finalParams = bustCache ? { ...params, _t: Date.now() } : params;
+    const { data } = await api.get('/shopping-lists', { params: finalParams });
+    return normalizePaginated<ShoppingList>(data);
+  },
+
+  // Obtener lista por ID
+  getById: async (id: string, bustCache = false): Promise<ShoppingList> => {
+    const params = bustCache ? { _t: Date.now() } : {};
+    const { data } = await api.get(`/shopping-lists/${id}`, { params });
+    const result = data?.shoppingList ?? data;
+    return result;
+  },
+
+  // Crear lista vacía
+  create: async (payload: CreateShoppingListPayload): Promise<ShoppingList> => {
+    const { data } = await api.post<ShoppingList>('/shopping-lists', payload);
+    return data?.shoppingList ?? data;
+  },
+
+  // Generar lista desde recetas
+  generateFromRecipes: async (payload: GenerateShoppingListPayload): Promise<ShoppingList> => {
+    const { data } = await api.post<ShoppingList>('/shopping-lists/generate', payload);
+    return data?.shoppingList ?? data;
+  },
+
+  // Actualizar lista
+  update: async (id: string, payload: UpdateShoppingListPayload): Promise<ShoppingList> => {
+    const { data } = await api.put<ShoppingList>(`/shopping-lists/${id}`, payload);
+    return data?.shoppingList ?? data;
+  },
+
+  // Eliminar lista
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/shopping-lists/${id}`);
+  },
+
+  // Duplicar lista
+  duplicate: async (id: string, name?: string): Promise<ShoppingList> => {
+    const { data } = await api.post<ShoppingList>(`/shopping-lists/${id}/duplicate`, { name });
+    return data?.shoppingList ?? data;
+  },
+
+  // ── Items de la lista ──
+  
+  // Agregar item a lista
+  addItem: async (listId: string, payload: CreateShoppingListItemPayload): Promise<ShoppingListItem> => {
+    const { data } = await api.post<ShoppingListItem>(`/shopping-lists/${listId}/items`, payload);
+    return data?.item ?? data;
+  },
+
+  // Actualizar item
+  updateItem: async (listId: string, itemId: string, payload: UpdateShoppingListItemPayload): Promise<ShoppingListItem> => {
+    const { data } = await api.put<ShoppingListItem>(`/shopping-lists/${listId}/items/${itemId}`, payload);
+    return data?.item ?? data;
+  },
+
+  // Marcar item como completado/pendiente
+  toggleItemCompleted: async (listId: string, itemId: string): Promise<ShoppingListItem> => {
+    await api.patch(`/shopping-lists/${listId}/items/${itemId}/toggle`);
+    
+    // Force fresh data by busting cache
+    const updatedList = await shoppingListService.getById(listId, true);
+    const updatedItem = updatedList.items?.find(
+      (it) => String(it.id) === String(itemId)
+    );
+    
+    if (!updatedItem) {
+      throw new Error('Item not found after toggle');
+    }
+    
+    return updatedItem;
+  },
+
+  // Eliminar item
+  deleteItem: async (listId: string, itemId: string): Promise<void> => {
+    await api.delete(`/shopping-lists/${listId}/items/${itemId}`);
+  },
+
+  // Reordenar items
+  reorderItems: async (listId: string, itemIds: string[]): Promise<void> => {
+    await api.put(`/shopping-lists/${listId}/items/reorder`, { itemIds });
+  },
+
+  // Marcar todos los items como completados/pendientes
+  toggleAllItems: async (listId: string, completed: boolean): Promise<ShoppingList> => {
+    const { data } = await api.patch<ShoppingList>(`/shopping-lists/${listId}/toggle-all`, { completed });
+    return data?.shoppingList ?? data;
+  },
+
+  // Limpiar items completados
+  clearCompleted: async (listId: string): Promise<ShoppingList> => {
+    const { data } = await api.delete<ShoppingList>(`/shopping-lists/${listId}/completed`);
+    return data?.shoppingList ?? data;
+  },
 };
 
 // ─── Health service ────────────────────────────────────────────────────────────

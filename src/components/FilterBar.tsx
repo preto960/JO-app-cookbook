@@ -15,15 +15,12 @@ interface Props {
   options:  FilterOption[];
   value:    string | null;
   onChange: (value: string | null) => void;
-  /** Label for the "all" option. Default: 'All' */
-  allLabel?: string;
 }
 
-export default function FilterBar({ options, value, onChange, allLabel = 'All' }: Props) {
+export default function FilterBar({ options, value, onChange }: Props) {
   const { colors } = useTheme();
 
-  const all: FilterOption = { label: allLabel, value: '' };
-  const chips = [all, ...options];
+  const chips = options;
 
   return (
     <ScrollView
@@ -31,11 +28,11 @@ export default function FilterBar({ options, value, onChange, allLabel = 'All' }
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      {chips.map((opt) => {
+      {chips.map((opt, index) => {
         const active = opt.value === '' ? !value : value === opt.value;
         return (
           <TouchableOpacity
-            key={opt.value}
+            key={opt.value || `filter-${index}`}
             style={[
               styles.chip,
               active

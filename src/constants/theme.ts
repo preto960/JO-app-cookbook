@@ -16,6 +16,7 @@ export type ThemeColors = {
   success: string;
   warning: string;
   danger: string;
+  dangerDim: string;
 
   textPrimary: string;
   textSecondary: string;
@@ -44,6 +45,7 @@ export const DARK_COLORS: ThemeColors = {
   success: '#10B981',
   warning: '#F59E0B',
   danger: '#EF4444',
+  dangerDim: '#EF444422',
 
   textPrimary: '#F1F5F9',
   textSecondary: '#64748B',
@@ -72,6 +74,7 @@ export const LIGHT_COLORS: ThemeColors = {
   success: '#059669',
   warning: '#D97706',
   danger: '#DC2626',
+  dangerDim: '#DC262622',
 
   textPrimary: '#0F172A',
   textSecondary: '#475569',
@@ -95,6 +98,7 @@ export const FONTS = {
 };
 
 export const RADIUS = {
+  xs: 4,
   sm: 8,
   md: 12,
   lg: 16,

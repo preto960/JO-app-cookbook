@@ -3,19 +3,12 @@ import React, {
   createContext, useContext, useState,
   useEffect, useCallback, ReactNode,
 } from 'react';
-import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import { secureKV } from '../lib/secureKV';
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const storage = {
-  get: (key: string): Promise<string | null> => {
-    if (Platform.OS === 'web') return Promise.resolve(localStorage.getItem(key));
-    return SecureStore.getItemAsync(key);
-  },
-  set: (key: string, value: string): Promise<void> => {
-    if (Platform.OS === 'web') { localStorage.setItem(key, value); return Promise.resolve(); }
-    return SecureStore.setItemAsync(key, value);
-  },
+  get: (key: string): Promise<string | null> => secureKV.getItemAsync(key),
+  set: (key: string, value: string): Promise<void> => secureKV.setItemAsync(key, value),
 };
 
 // ─── Keys ─────────────────────────────────────────────────────────────────────
@@ -99,7 +92,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           return [key, value] as [keyof AppSettings, boolean];
         })
       );
-      const loaded = Object.fromEntries(entries) as AppSettings;
+      const loaded = Object.fromEntries(entries) as unknown as AppSettings;
       setSettings(loaded);
       // Apply all effects on startup
       (Object.entries(loaded) as [keyof AppSettings, boolean][]).forEach(

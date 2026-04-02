@@ -4,14 +4,15 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Image, Alert, Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
-import { recipeService } from '../../services/api';
+import { recipeService, resolvePublicMediaUrl } from '../../services/api';
 import { useApiCall } from '../../hooks/useApiCall';
-import { StatusBadge, EmptyState, SkeletonList, ThemedCard, ActionMenu } from '../../components';
+import { StatusBadge, EmptyState, SkeletonList, ThemedCard, ActionMenu, RecipeToShoppingListModal } from '../../components';
 import { SPACING, RADIUS } from '../../constants/theme';
+import type { ShoppingList } from '../../types/api.types';
 
 interface Props {
   navigation: any;
@@ -27,6 +28,7 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
   const { user } = useAuth();
 
   const [userRating, setUserRating] = useState(0);
+  const [showShoppingListModal, setShowShoppingListModal] = useState(false);
 
   const { data: recipe, loading, error, execute: loadRecipe } = useApiCall(recipeService.getById, {
     onSuccess: (r) => {
@@ -149,15 +151,26 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
     await rateRecipe(recipeId, { score });
   };
 
+  const handleCreateShoppingList = () => {
+    setShowShoppingListModal(true);
+  };
+
+  const handleShoppingListSuccess = (list: ShoppingList) => {
+    navigation.navigate('ShoppingListDetail', { listId: list.id });
+  };
+
+  const recipeCoverUri = resolvePublicMediaUrl(recipe.coverImage);
+
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={true}
-    >
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={true}
+      >
       {/* Cover image */}
-      {recipe.coverImage ? (
-        <Image source={{ uri: recipe.coverImage }} style={styles.cover} resizeMode="cover" />
+      {recipeCoverUri ? (
+        <Image source={{ uri: recipeCoverUri }} style={styles.cover} resizeMode="cover" />
       ) : (
         <View style={[styles.coverPlaceholder, { backgroundColor: colors.surfaceElevated }]}>
           <Ionicons name="restaurant-outline" size={44} color={colors.textMuted} />
@@ -185,7 +198,7 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
       <View style={styles.badges}>
         <StatusBadge label={recipe.difficulty} auto />
         <StatusBadge label={recipe.isPublished ? 'published' : 'draft'} auto />
-        {recipe.tags.map(t => <StatusBadge key={t.id} label={t.name} variant="secondary" size="sm" />)}
+        {(recipe.tags ?? []).map(t => <StatusBadge key={t.id} label={t.name} variant="secondary" size="sm" />)}
       </View>
 
       {/* Stats row */}
@@ -234,6 +247,20 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
           </ThemedCard>
         )}
 
+        {/* Shopping List Button */}
+        {recipe.ingredients.length > 0 && (
+          <TouchableOpacity
+            style={[styles.shoppingListBtn, { backgroundColor: colors.primaryDim, borderColor: colors.primary }]}
+            onPress={handleCreateShoppingList}
+          >
+            <Ionicons name="list" size={20} color={colors.primary} />
+            <Text style={[styles.shoppingListBtnText, { color: colors.primary }]}>
+              Add to Shopping List
+            </Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+
         {/* Ingredients */}
         {recipe.ingredients.length > 0 && (
           <ThemedCard title={`Ingredients (${recipe.ingredients.length})`}>
@@ -271,10 +298,20 @@ export default function RecipeDetailScreen({ navigation, route }: Props) {
           </View>
         </ThemedCard>
         <View style={{ marginBottom: SPACING.md }} />
+        <View style={{ height: SPACING.xl }} />
       </View>
-
-      <View style={{ height: SPACING.xl }} />
     </ScrollView>
+
+      {/* Shopping List Modal */}
+      {recipe && (
+        <RecipeToShoppingListModal
+          visible={showShoppingListModal}
+          onClose={() => setShowShoppingListModal(false)}
+          selectedRecipes={[recipe]}
+          onSuccess={handleShoppingListSuccess}
+        />
+      )}
+    </View>
   );
 }
 
@@ -293,8 +330,8 @@ const styles = StyleSheet.create({
   content:   { paddingBottom: SPACING.xl },
   contentPadding: { paddingHorizontal: SPACING.md },
 
-  cover:            { width: '100%', height: 220 },
-  coverPlaceholder: { width: '100%', height: 160, alignItems: 'center', justifyContent: 'center' },
+  cover:            { width: '100%', height: 220, alignSelf: 'stretch' },
+  coverPlaceholder: { width: '100%', height: 160, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
 
   header: {
     flexDirection: 'row',
@@ -331,6 +368,19 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 10, textAlign: 'center' },
 
   description:  { fontSize: 15, lineHeight: 22 },
+  
+  shoppingListBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+  },
+  shoppingListBtnText: { fontSize: 16, fontWeight: '600' },
   
   ingredientsContainer: { 
     borderRadius: RADIUS.md, 

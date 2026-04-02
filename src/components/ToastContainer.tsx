@@ -4,7 +4,7 @@ import {
   View, Text, StyleSheet, Animated,
   TouchableOpacity, Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useToast, Toast, ToastType } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
 import { RADIUS, SPACING } from '../constants/theme';

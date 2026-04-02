@@ -11,7 +11,7 @@ export type BadgeVariant =
   | 'primary' | 'secondary' | 'admin' | 'neutral';
 
 interface Props {
-  label: string;
+  label?: string | null;
   variant?: BadgeVariant;
   size?: 'sm' | 'md';
   /** Auto-pick variant from common keywords */
@@ -43,12 +43,14 @@ const AUTO_VARIANTS: Record<string, BadgeVariant> = {
 };
 
 function autoVariant(label: string): BadgeVariant {
-  return AUTO_VARIANTS[label.toLowerCase()] ?? 'neutral';
+  const key = (label ?? '').toLowerCase();
+  return AUTO_VARIANTS[key] ?? 'neutral';
 }
 
 export default function StatusBadge({ label, variant, size = 'md', auto = false }: Props) {
   const { colors } = useTheme();
-  const resolved: BadgeVariant = variant ?? (auto ? autoVariant(label) : 'neutral');
+  const safeLabel = label ?? '';
+  const resolved: BadgeVariant = variant ?? (auto ? autoVariant(safeLabel) : 'neutral');
 
   const { bg, text } = getColors(resolved, colors);
   const isSmall = size === 'sm';
@@ -64,7 +66,7 @@ export default function StatusBadge({ label, variant, size = 'md', auto = false 
         { color: text },
         isSmall ? styles.labelSm : styles.labelMd,
       ]} numberOfLines={1}>
-        {label}
+        {safeLabel || '—'}
       </Text>
     </View>
   );

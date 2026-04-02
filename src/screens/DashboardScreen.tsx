@@ -29,7 +29,7 @@ const MOCK_USERS = [
   { id: '4', firstName: 'Pedro',  lastName: 'Sanchez',  email: 'pedro@co.com',  role: 'user',  active: true  },
 ];
 
-export default function DashboardScreen() {
+export default function DashboardScreen({ navigation }: { navigation: any }) {
   const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -120,6 +120,7 @@ export default function DashboardScreen() {
           </View>
         ))}
       </View>
+
 
       {/* ── Recent Activity ── */}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Recent Activity</Text>

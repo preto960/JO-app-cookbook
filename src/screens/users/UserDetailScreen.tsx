@@ -3,7 +3,7 @@
 // Cross-platform: web, iOS, Android.
 import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Platform, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { useUsersRefresh } from '../../context/DataRefreshContext';

@@ -4,9 +4,9 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, Pressable,
-  StyleSheet, Platform, Dimensions,
+  StyleSheet, Platform, Dimensions, type ViewStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../context/ThemeContext';
 import { RADIUS, SPACING } from '../constants/theme';
 
@@ -24,9 +24,11 @@ interface MenuPosition {
 }
 
 interface Props {
-  actions:  MenuAction[];
-  size?:    number;
-  iconName?: React.ComponentProps<typeof Ionicons>['name'];
+  actions:       MenuAction[];
+  size?:         number;
+  iconName?:     React.ComponentProps<typeof Ionicons>['name'];
+  /** Override trigger wrapper (e.g. margin when embedded in a card) */
+  triggerStyle?: ViewStyle;
 }
 
 const MENU_WIDTH = 200;
@@ -36,6 +38,7 @@ export default function ActionMenu({
   actions,
   size = 32,
   iconName = 'ellipsis-vertical',
+  triggerStyle,
 }: Props) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
@@ -91,6 +94,7 @@ export default function ActionMenu({
         style={[
           styles.trigger,
           { width: size, height: size, backgroundColor: colors.surfaceElevated },
+          triggerStyle,
         ]}
         onPress={measureAndOpen}
         activeOpacity={0.7}

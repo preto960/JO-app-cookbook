@@ -2,8 +2,8 @@
 import React, {
   createContext, useContext, useState, useEffect, ReactNode,
 } from 'react';
-import { useColorScheme, Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import { useColorScheme } from 'react-native';
+import { secureKV } from '../lib/secureKV';
 import { ThemeColors, DARK_COLORS, LIGHT_COLORS } from '../constants/theme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,17 +20,8 @@ interface ThemeContextValue {
 const THEME_KEY = 'app_theme_mode';
 
 const storage = {
-  get: (key: string): Promise<string | null> => {
-    if (Platform.OS === 'web') return Promise.resolve(localStorage.getItem(key));
-    return SecureStore.getItemAsync(key);
-  },
-  set: (key: string, value: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      localStorage.setItem(key, value);
-      return Promise.resolve();
-    }
-    return SecureStore.setItemAsync(key, value);
-  },
+  get: (key: string): Promise<string | null> => secureKV.getItemAsync(key),
+  set: (key: string, value: string): Promise<void> => secureKV.setItemAsync(key, value),
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────

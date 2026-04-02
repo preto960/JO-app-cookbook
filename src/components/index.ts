@@ -14,6 +14,7 @@ export {
   SkeletonBox, SkeletonListRow, SkeletonCard,
   SkeletonStatCard, SkeletonList,
 } from './SkeletonLoader';
+export { SkeletonList as SkeletonLoader } from './SkeletonLoader';
 
 export { default as ThemedCard }     from './ThemedCard';
 export { default as SettingRow }     from './SettingRow';
@@ -24,3 +25,4 @@ export { default as HeaderAvatar }   from './HeaderAvatar';
 export { default as ToastContainer } from './ToastContainer';
 export { default as DebugPanel }     from './DebugPanel';
 export { default as PasswordInput }  from './PasswordInput';
+export { default as RecipeToShoppingListModal } from './RecipeToShoppingListModal';

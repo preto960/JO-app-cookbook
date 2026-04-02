@@ -77,18 +77,25 @@ export function DebugProvider({ children }: { children: ReactNode }) {
       }
     } else {
       // Web — use window.onerror + unhandledrejection
-      const onError = (event: ErrorEvent) => {
-        addError(event.message ?? 'Unknown error', event.error?.stack);
+      const w = globalThis as typeof globalThis & {
+        addEventListener: Window['addEventListener'];
+        removeEventListener: Window['removeEventListener'];
       };
-      const onUnhandled = (event: PromiseRejectionEvent) => {
-        const msg = event.reason?.message ?? String(event.reason ?? 'Unhandled promise rejection');
-        addError(msg, event.reason?.stack);
+      const onError = (event: Event) => {
+        const e = event as ErrorEvent;
+        addError(e.message ?? 'Unknown error', e.error?.stack);
       };
-      window.addEventListener('error',               onError);
-      window.addEventListener('unhandledrejection',  onUnhandled);
+      const onUnhandled = (event: Event) => {
+        const ev = event as { reason?: { message?: string; stack?: string } };
+        const r = ev.reason;
+        const msg = r?.message ?? String(r ?? 'Unhandled promise rejection');
+        addError(msg, r?.stack);
+      };
+      w.addEventListener('error', onError);
+      w.addEventListener('unhandledrejection', onUnhandled);
       return () => {
-        window.removeEventListener('error',              onError);
-        window.removeEventListener('unhandledrejection', onUnhandled);
+        w.removeEventListener('error', onError);
+        w.removeEventListener('unhandledrejection', onUnhandled);
       };
     }
   }, [addError]);
@@ -106,11 +113,11 @@ export function DebugProvider({ children }: { children: ReactNode }) {
 
   // ── Custom logs ───────────────────────────────────────────────────────────
   const log = useCallback((message: string) => {
-    setCustomLogs(prev => [{ id: `${Date.now()}`, level: 'log', message, timestamp: Date.now() }, ...prev].slice(0, MAX));
+    setCustomLogs(prev => [{ id: `${Date.now()}`, level: 'log' as const, message, timestamp: Date.now() }, ...prev].slice(0, MAX));
   }, []);
 
   const warn = useCallback((message: string) => {
-    setCustomLogs(prev => [{ id: `${Date.now()}`, level: 'warn', message, timestamp: Date.now() }, ...prev].slice(0, MAX));
+    setCustomLogs(prev => [{ id: `${Date.now()}`, level: 'warn' as const, message, timestamp: Date.now() }, ...prev].slice(0, MAX));
   }, []);
 
   const logError = useCallback((message: string, stack?: string) => {

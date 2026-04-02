@@ -1,7 +1,7 @@
 // src/hooks/usePagination.ts
 // Hook for paginated API calls with optional search/filter params.
 // Cross-platform: web, iOS, Android.
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { extractErrorMessage } from './useApiCall';
 import type { PaginatedResponse } from '../types/api.types';
 
@@ -10,9 +10,11 @@ interface PaginationOptions<T, P> {
   initialParams?: Partial<P>;
   pageSize?: number;
   onError?: (message: string) => void;
+  /** `mount` (default): fetch on mount / when apiFunction changes. `manual`: only via refresh/refreshWithParams/setParams. */
+  initialFetch?: 'mount' | 'manual';
 }
 
-interface PaginationState<T> {
+interface PaginationState<T, P extends object = object> {
   items:       T[];
   loading:     boolean;
   loadingMore: boolean;
@@ -41,8 +43,8 @@ interface PaginationState<T> {
  */
 export function usePagination<T, P extends object = object>(
   options: PaginationOptions<T, P>
-): PaginationState<T> {
-  const { apiFunction, initialParams = {}, pageSize = 20, onError } = options;
+): PaginationState<T, P> {
+  const { apiFunction, initialParams = {}, pageSize = 20, onError, initialFetch = 'mount' } = options;
 
   const [items,       setItems]       = useState<T[]>([]);
   const [loading,     setLoading]     = useState(false);
@@ -55,11 +57,13 @@ export function usePagination<T, P extends object = object>(
 
   const mountedRef = useRef(true);
   const callIdRef  = useRef(0);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const fetchPage = useCallback(async (targetPage: number, append: boolean, customParams?: Partial<P>) => {
     const callId = ++callIdRef.current;
-    if (append) setLoadingMore(true);
-    else        setLoading(true);
+    if (append) {setLoadingMore(true);}
+    else        {setLoading(true);}
     setError(null);
 
     try {
@@ -69,17 +73,18 @@ export function usePagination<T, P extends object = object>(
         page:  targetPage,
         limit: pageSize,
       } as P & { page: number; limit: number };
-      
+
       const result = await apiFunction(finalParams);
 
-      if (!mountedRef.current || callId !== callIdRef.current) return;
+      if (!mountedRef.current || callId !== callIdRef.current) {return;}
 
-      setItems(prev => append ? [...prev, ...result.data] : result.data);
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      setItems(prev => (append ? [...prev, ...rows] : rows));
       setPage(result.page ?? targetPage);
       setTotalPages(result.totalPages ?? 1);
       setTotal(result.total ?? result.data.length);
     } catch (err: any) {
-      if (!mountedRef.current || callId !== callIdRef.current) return;
+      if (!mountedRef.current || callId !== callIdRef.current) {return;}
       const msg = extractErrorMessage(err);
       setError(msg);
       onError?.(msg);
@@ -95,7 +100,7 @@ export function usePagination<T, P extends object = object>(
   const refresh  = useCallback(() => fetchPage(1, false), [fetchPage]);
   const refreshWithParams = useCallback((customParams: Partial<P>) => fetchPage(1, false, customParams), [fetchPage]);
   const loadMore = useCallback(() => {
-    if (loadingMore || loading || page >= totalPages) return Promise.resolve();
+    if (loadingMore || loading || page >= totalPages) {return Promise.resolve();}
     return fetchPage(page + 1, true);
   }, [fetchPage, loading, loadingMore, page, totalPages]);
 
@@ -103,16 +108,16 @@ export function usePagination<T, P extends object = object>(
     return new Promise<Partial<P>>((resolve) => {
       setParamsState(prev => {
         const mergedParams = { ...prev, ...newParams };
-        
+
         // Reset to page 1 on param change
         setPage(1);
         setItems([]);
         setTotalPages(1);
         setTotal(0);
-        
+
         // Resolve with the merged params
         setTimeout(() => resolve(mergedParams), 0);
-        
+
         return mergedParams;
       });
     });
@@ -128,6 +133,12 @@ export function usePagination<T, P extends object = object>(
     setTotal(0);
     setParamsState(initialParams);
   }, [initialParams]);
+
+  useEffect(() => {
+    if (initialFetch === 'manual') {return;}
+    refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiFunction, initialFetch]);
 
   return {
     items, loading, loadingMore, error,

@@ -4,7 +4,7 @@ import {
   View, Text, ScrollView, StyleSheet,
   Alert, TextInput, TouchableOpacity,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAuth, fullName, registerToastBridge } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';

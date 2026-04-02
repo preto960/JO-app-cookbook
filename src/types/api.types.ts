@@ -265,6 +265,88 @@ export interface RefreshResponse {
   accessToken: string;
 }
 
+// ─── Shopping List types ──────────────────────────────────────────────────────
+
+export interface ShoppingListItem {
+  id: string;
+  shoppingListId?: string; // ID de la lista a la que pertenece (enviado por backend)
+  name: string;
+  quantity: string;
+  unit?: string;
+  notes?: string;
+  isCompleted: boolean;
+  category?: string;
+  displayOrder: number;
+  recipeIds?: string[]; // IDs de las recetas que requieren este ingrediente
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ShoppingList {
+  id: string;
+  name: string;
+  description?: string;
+  items?: ShoppingListItem[]; // Optional to handle backend responses that might not include items
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  recipeIds?: string[]; // Recetas usadas para generar esta lista
+  itemCount?: number; // Total number of items (provided by backend in list view)
+  completedCount?: number; // Number of completed items (provided by backend in list view)
+  recipes?: Array<{
+    id: string;
+    recipeId: string;
+    recipe: {
+      id: string;
+      title: string;
+      slug: string;
+    };
+    createdAt: string;
+  }>; // Recetas asociadas con detalles completos
+}
+
+export interface CreateShoppingListPayload {
+  name: string;
+  description?: string;
+  items?: Omit<ShoppingListItem, 'id' | 'displayOrder'>[];
+  recipeIds?: string[];
+}
+
+export interface UpdateShoppingListPayload {
+  name?: string;
+  description?: string;
+  isActive?: boolean;
+}
+
+export interface CreateShoppingListItemPayload {
+  name: string;
+  quantity: string;
+  unit?: string;
+  notes?: string;
+  category?: string;
+}
+
+export interface UpdateShoppingListItemPayload {
+  name?: string;
+  quantity?: string;
+  unit?: string;
+  notes?: string;
+  isCompleted?: boolean;
+  category?: string;
+}
+
+export interface GenerateShoppingListPayload {
+  name: string;
+  recipeIds: string[];
+  description?: string;
+}
+
+export interface ShoppingListsParams extends PaginationParams {
+  search?: string;
+  isActive?: boolean;
+}
+
 // ─── Health types ─────────────────────────────────────────────────────────────
 
 export interface HealthStatus {

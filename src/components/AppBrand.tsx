@@ -12,7 +12,7 @@ interface AppBrandProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-const APP_NAME = 'JO-app-cookbook';
+const APP_NAME = 'CookBook-JO';
 const APP_INITIAL = 'J'; // First letter for the logo ring
 
 const SIZE_MAP = {

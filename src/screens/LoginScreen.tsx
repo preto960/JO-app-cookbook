@@ -14,7 +14,7 @@ import AppLogo       from '../components/AppLogo';
 import PasswordInput from '../components/PasswordInput';
 
 const CURRENT_YEAR = new Date().getFullYear();
-const APP_NAME     = 'JO-app-cookbook';
+const APP_NAME     = 'CookBook-JO';
 
 export default function LoginScreen() {
   const { login }  = useAuth();

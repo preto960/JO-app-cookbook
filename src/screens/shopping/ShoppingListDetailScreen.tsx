@@ -234,17 +234,34 @@ export default function ShoppingListDetailScreen() {
   };
 
   const handleToggleAll = async (completed: boolean) => {
+    if (!list) return;
+
+    // Optimistic update - update all items immediately
+    const updatedItems = list.items?.map(item => ({ ...item, isCompleted: completed })) || [];
+    const optimisticList = { ...list, items: updatedItems };
+    setData(optimisticList);
+
     try {
       await shoppingListService.toggleAllItems(listId, completed);
       showToast('success', completed ? 'All items marked as completed' : 'All items marked as pending');
       setRefreshTrigger(prev => prev + 1);
       triggerRefresh('shoppingLists');
     } catch (err) {
+      console.error('❌ Toggle all items error:', err);
+      // Revert optimistic update on error
+      setData(list);
       showToast('error', 'Failed to update items');
     }
   };
 
   const handleClearCompleted = async () => {
+    if (!list) return;
+
+    // Optimistic update - remove completed items immediately
+    const updatedItems = list.items?.filter(item => !item.isCompleted) || [];
+    const optimisticList = { ...list, items: updatedItems };
+    setData(optimisticList);
+
     try {
       await shoppingListService.clearCompleted(listId);
       showToast('success', 'Completed items cleared');
@@ -252,7 +269,11 @@ export default function ShoppingListDetailScreen() {
       setRefreshTrigger(prev => prev + 1);
       triggerRefresh('shoppingLists');
     } catch (err) {
+      console.error('❌ Clear completed items error:', err);
+      // Revert optimistic update on error
+      setData(list);
       showToast('error', 'Failed to clear completed items');
+      setShowConfirmClear(false);
     }
   };
 

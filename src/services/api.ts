@@ -2,6 +2,7 @@
 // src/services/api.ts
 import axios, { AxiosError, AxiosRequestConfig, AxiosInstance } from 'axios';
 import { Platform } from 'react-native';
+import { API_URL } from '@env';
 import { secureKV } from '../lib/secureKV';
 import type {
   LoginPayload, LoginResponse, RefreshResponse,
@@ -21,7 +22,8 @@ const TOKEN_KEY         = 'auth_token';
 const REFRESH_TOKEN_KEY = 'auth_refresh_token';
 
 export const API_URL_KEY     = 'api_base_url';
-export const DEFAULT_API_URL = 'http://localhost:3002/api';
+// Prioridad: Storage (Settings) > .env API_URL > fallback hardcodeado
+export const DEFAULT_API_URL: string = API_URL ?? 'https://jo-backend-cookbook.vercel.app/api';
 
 // ─── Retry config ─────────────────────────────────────────────────────────────
 const RETRY_CONFIG = {

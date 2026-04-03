@@ -38,7 +38,7 @@ import ShoppingListsScreen from '../screens/shopping/ShoppingListsScreen';
 import ShoppingListDetailScreen from '../screens/shopping/ShoppingListDetailScreen';
 import ShoppingListFormScreen from '../screens/shopping/ShoppingListFormScreen';
 
-const APP_NAME = 'JO-app-cookbook';
+const APP_NAME = 'CookBook-JO';
 const SCREEN_W = Dimensions.get('window').width;
 const DRAWER_W = Math.min(260, SCREEN_W * 0.72);
 

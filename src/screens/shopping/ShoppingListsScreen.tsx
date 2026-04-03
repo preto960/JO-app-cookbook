@@ -264,20 +264,13 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   // Tabs
-  tabRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-  },
+  tabRow: { flexDirection: 'row', borderBottomWidth: 1 },
   tab: {
-    flex: 1,
-    paddingVertical: SPACING.md,
+    flex: 1, paddingVertical: 11,
     alignItems: 'center',
-    justifyContent: 'center',
+    borderBottomWidth: 2, borderBottomColor: 'transparent',
   },
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  tabLabel: { fontSize: 12, fontWeight: '600' },
 
   scroll: { flex: 1 },
   listContent: { padding: SPACING.md },

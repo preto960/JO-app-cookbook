@@ -11,7 +11,8 @@ import { useUsersRefresh } from '../../context/DataRefreshContext';
 import { userService } from '../../services/api';
 import { usePagination } from '../../hooks/usePagination';
 import { useApiCall } from '../../hooks/useApiCall';
-import { StatusBadge, EmptyState, SkeletonList, Pagination, ActionMenu } from '../../components';
+import { StatusBadge, EmptyState, SkeletonList, Pagination, ActionMenu, ProtectedRoute } from '../../components';
+import { useResourcePermissions } from '../../context/PermissionsContext';
 import SharedFilterBar from '../../components/SharedFilterBar';
 import { SPACING, RADIUS } from '../../constants/theme';
 import type { ApiUser } from '../../types/api.types';
@@ -34,10 +35,13 @@ interface Props {
   route?: { params?: { refresh?: boolean } };
 }
 
-export default function UsersScreen({ navigation, route }: Props) {
+function UsersScreenContent({ navigation, route }: Props) {
   const { colors } = useTheme();
   const toast = useToast();
   const { subscribeToUsersChange, notifyUsersChanged } = useUsersRefresh();
+  
+  // Permisos para usuarios
+  const permissions = useResourcePermissions('USERS');
 
   const [search, setSearch] = React.useState('');
   const [role,   setRole]   = React.useState<string | null>(null);
@@ -115,7 +119,7 @@ export default function UsersScreen({ navigation, route }: Props) {
         chipGroups={[ROLE_CHIPS, STATUS_CHIPS]}
         chipValues={[role, status]}
         onChipChange={handleChipChange}
-        onAction={() => navigation.navigate('UserForm')}
+        onAction={permissions.canCreate ? () => navigation.navigate('UserForm') : undefined}
       />
 
       <ScrollView
@@ -144,8 +148,8 @@ export default function UsersScreen({ navigation, route }: Props) {
             type={search ? 'search' : 'empty'}
             title={search ? 'No results found' : 'No users yet'}
             description={search ? `No users match "${search}"` : 'Create the first user.'}
-            actionLabel={search ? undefined : 'New user'}
-            onAction={search ? undefined : () => navigation.navigate('UserForm')}
+            actionLabel={search ? undefined : (permissions.canCreate ? 'New user' : undefined)}
+            onAction={search ? undefined : (permissions.canCreate ? () => navigation.navigate('UserForm') : undefined)}
           />
         ) : (
           <View style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -180,10 +184,10 @@ export default function UsersScreen({ navigation, route }: Props) {
                     <StatusBadge label={user.isActive ? 'active' : 'inactive'} auto size="sm" />
                   </View>
                   <ActionMenu actions={[
-                    { label: 'Edit',            icon: 'pencil-outline',            onPress: () => navigation.navigate('UserForm', { userId: user.id }) },
-                    { label: 'Change password', icon: 'key-outline',               onPress: () => navigation.navigate('UserPassword', { userId: user.id }) },
-                    { label: user.isActive ? 'Deactivate' : 'Activate', icon: user.isActive ? 'pause-circle-outline' : 'play-circle-outline', onPress: () => handleToggleStatus(user) },
-                    { label: 'Delete',          icon: 'trash-outline', danger: true, onPress: () => handleDelete(user) },
+                    ...(permissions.canEdit ? [{ label: 'Edit', icon: 'pencil-outline' as const, onPress: () => navigation.navigate('UserForm', { userId: user.id }) }] : []),
+                    ...(permissions.canEdit ? [{ label: 'Change password', icon: 'key-outline' as const, onPress: () => navigation.navigate('UserPassword', { userId: user.id }) }] : []),
+                    ...(permissions.canEdit ? [{ label: user.isActive ? 'Deactivate' : 'Activate', icon: user.isActive ? 'pause-circle-outline' as const : 'play-circle-outline' as const, onPress: () => handleToggleStatus(user) }] : []),
+                    ...(permissions.canDelete ? [{ label: 'Delete', icon: 'trash-outline' as const, danger: true, onPress: () => handleDelete(user) }] : []),
                   ]} />
                 </View>
               </TouchableOpacity>
@@ -231,3 +235,11 @@ const styles = StyleSheet.create({
   userRight:  { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   badgesCol:  { gap: 3, alignItems: 'flex-end' },
 });
+
+export default function UsersScreen(props: Props) {
+  return (
+    <ProtectedRoute resource="USERS" action="canView">
+      <UsersScreenContent {...props} />
+    </ProtectedRoute>
+  );
+}

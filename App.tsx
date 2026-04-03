@@ -10,6 +10,7 @@ import { DebugProvider }    from './src/context/DebugContext';
 import { SettingsProvider } from './src/context/SettingsContext';
 import { I18nProvider }     from './src/context/I18nContext';
 import { DataRefreshProvider } from './src/context/DataRefreshContext';
+import { PermissionsProvider } from './src/context/PermissionsContext';
 import AppNavigator         from './src/navigation/AppNavigator';
 
 function ThemedApp() {
@@ -19,7 +20,9 @@ function ThemedApp() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <AuthProvider>
-        <AppNavigator />
+        <PermissionsProvider>
+          <AppNavigator />
+        </PermissionsProvider>
       </AuthProvider>
     </View>
   );
@@ -32,6 +35,8 @@ function ThemedApp() {
 //  I18nProvider       — translations from API
 //  DataRefreshProvider — data change notifications
 //  ThemeProvider      — colors
+//  AuthProvider       — user authentication
+//  PermissionsProvider — user permissions (needs auth context)
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>

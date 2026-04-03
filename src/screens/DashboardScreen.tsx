@@ -6,6 +6,8 @@ import {
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { RADIUS, SPACING } from '../constants/theme';
+import { ProtectedRoute } from '../components';
+import { useResourcePermissions } from '../context/PermissionsContext';
 
 const MOCK_STATS = [
   { label: 'Total Users',     value: '1,284', delta: '+12%', positive: true  },
@@ -29,9 +31,12 @@ const MOCK_USERS = [
   { id: '4', firstName: 'Pedro',  lastName: 'Sanchez',  email: 'pedro@co.com',  role: 'user',  active: true  },
 ];
 
-export default function DashboardScreen({ navigation }: { navigation: any }) {
+function DashboardScreenContent({ navigation }: { navigation: any }) {
   const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Permisos para dashboard
+  const permissions = useResourcePermissions('DASHBOARD');
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -242,3 +247,11 @@ const styles = StyleSheet.create({
   },
   activityTypeText: { fontSize: 10, fontWeight: '600' },
 });
+
+export default function DashboardScreen(props: { navigation: any }) {
+  return (
+    <ProtectedRoute resource="DASHBOARD" action="canView">
+      <DashboardScreenContent {...props} />
+    </ProtectedRoute>
+  );
+}

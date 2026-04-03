@@ -17,7 +17,9 @@ import { useApiQuery } from '../../hooks';
 import {
   Pagination, EmptyState,
   SkeletonList, StatusBadge, SharedFilterBar, ActionMenu, ConfirmModal,
+  PermissionGuard, ProtectedRoute,
 } from '../../components';
+import { useResourcePermissions } from '../../context/PermissionsContext';
 
 
 export default function ShoppingListsScreen() {
@@ -25,6 +27,9 @@ export default function ShoppingListsScreen() {
   const { colors } = useTheme();
   const { showToast } = useToast();
   const { subscribeToDataChange } = useDataRefresh();
+  
+  // Permisos para shopping lists
+  const permissions = useResourcePermissions('SHOPPING_LISTS');
 
   // ── State ──
   const [search, setSearch] = useState('');
@@ -150,29 +155,30 @@ export default function ShoppingListsScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Tabs */}
-      <View style={[styles.tabRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {(['all', 'active', 'inactive'] as const).map(t => (
-          <TouchableOpacity
-            key={t}
-            style={[styles.tab, tab === t && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-            onPress={() => handleTabChange(t)}
-          >
-            <Text style={[styles.tabLabel, { color: tab === t ? colors.primary : colors.textSecondary }]}>
-              {t === 'all' ? 'All Lists' : t === 'active' ? 'Active' : 'Inactive'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+    <ProtectedRoute resource="SHOPPING_LISTS" action="canView">
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Tabs */}
+        <View style={[styles.tabRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+          {(['all', 'active', 'inactive'] as const).map(t => (
+            <TouchableOpacity
+              key={t}
+              style={[styles.tab, tab === t && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+              onPress={() => handleTabChange(t)}
+            >
+              <Text style={[styles.tabLabel, { color: tab === t ? colors.primary : colors.textSecondary }]}>
+                {t === 'all' ? 'All Lists' : t === 'active' ? 'Active' : 'Inactive'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* ── Filter Bar ── */}
-      <SharedFilterBar
-        searchValue={search}
-        onSearchChange={handleSearch}
-        searchPlaceholder="Search shopping lists..."
-        onAction={handleCreateList}
-      />
+        {/* ── Filter Bar ── */}
+        <SharedFilterBar
+          searchValue={search}
+          onSearchChange={handleSearch}
+          searchPlaceholder="Search shopping lists..."
+          onAction={permissions.canCreate ? handleCreateList : undefined}
+        />
 
       <ScrollView
         style={styles.scroll}
@@ -212,8 +218,8 @@ export default function ShoppingListsScreen() {
             icon="list-outline"
             title="No Shopping Lists"
             description="Create your first shopping list to get started"
-            actionLabel="Create List"
-            onAction={handleCreateList}
+            actionLabel={permissions.canCreate ? "Create List" : undefined}
+            onAction={permissions.canCreate ? handleCreateList : undefined}
           />
         ) : (
           <View style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -224,9 +230,10 @@ export default function ShoppingListsScreen() {
                 isLast={idx === lists.length - 1}
                 colors={colors}
                 onPress={() => handleViewList(list)}
-                onEdit={() => handleEditList(list)}
+                onEdit={permissions.canEdit ? () => handleEditList(list) : undefined}
                 onDuplicate={() => handleDuplicateList(list)}
-                onDelete={() => handleDeleteList(list)}
+                onDelete={permissions.canDelete ? () => handleDeleteList(list) : undefined}
+                permissions={permissions}
               />
             ))}
           </View>
@@ -256,7 +263,8 @@ export default function ShoppingListsScreen() {
         onConfirm={confirmDeleteList}
         danger
       />
-    </View>
+      </View>
+    </ProtectedRoute>
   );
 }
 
@@ -332,12 +340,19 @@ interface ShoppingListRowProps {
   isLast: boolean;
   colors: any;
   onPress: () => void;
-  onEdit: () => void;
+  onEdit?: () => void;
   onDuplicate: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
+  permissions: {
+    canView: boolean;
+    canCreate: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+    canInMenu: boolean;
+  };
 }
 
-function ShoppingListRow({ list, isLast, colors, onPress, onEdit, onDuplicate, onDelete }: ShoppingListRowProps) {
+function ShoppingListRow({ list, isLast, colors, onPress, onEdit, onDuplicate, onDelete, permissions }: ShoppingListRowProps) {
   const getItemsCount = (row: ShoppingList) => {
     if (row.itemCount !== undefined && row.completedCount !== undefined) {
       return { total: row.itemCount, completed: row.completedCount };
@@ -354,23 +369,27 @@ function ShoppingListRow({ list, isLast, colors, onPress, onEdit, onDuplicate, o
     return `${completed}/${total} items`;
   };
 
+  // Construir acciones del menú basadas en permisos
   const menuActions = [
-    {
+    // Editar solo si tiene permisos y se proporcionó la función
+    ...(permissions.canEdit && onEdit ? [{
       label: 'Edit',
       icon: 'create-outline' as const,
       onPress: onEdit,
-    },
-    {
+    }] : []),
+    // Duplicar siempre disponible si puede crear
+    ...(permissions.canCreate ? [{
       label: 'Duplicate',
       icon: 'copy-outline' as const,
       onPress: onDuplicate,
-    },
-    {
+    }] : []),
+    // Eliminar solo si tiene permisos y se proporcionó la función
+    ...(permissions.canDelete && onDelete ? [{
       label: 'Delete',
       icon: 'trash-outline' as const,
       onPress: onDelete,
       danger: true,
-    },
+    }] : []),
   ];
 
   return (
@@ -407,7 +426,10 @@ function ShoppingListRow({ list, isLast, colors, onPress, onEdit, onDuplicate, o
         <View style={styles.badgesCol}>
           <StatusBadge label={list.isActive ? 'Active' : 'Inactive'} auto size="sm" />
         </View>
-        <ActionMenu actions={menuActions} />
+        {/* Solo mostrar menú si hay al menos una acción disponible */}
+        {menuActions.length > 0 && (
+          <ActionMenu actions={menuActions} />
+        )}
       </View>
     </TouchableOpacity>
   );

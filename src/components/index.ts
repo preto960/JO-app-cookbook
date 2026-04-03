@@ -26,3 +26,7 @@ export { default as ToastContainer } from './ToastContainer';
 export { default as DebugPanel }     from './DebugPanel';
 export { default as PasswordInput }  from './PasswordInput';
 export { default as RecipeToShoppingListModal } from './RecipeToShoppingListModal';
+
+// Permission components
+export { PermissionGuard, PermissionButton, PermissionMenuItem } from './PermissionGuard';
+export { ProtectedRoute } from './ProtectedRoute';

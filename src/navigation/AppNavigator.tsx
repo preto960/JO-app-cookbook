@@ -14,6 +14,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDebug } from '../context/DebugContext';
+import { useResourcePermissions } from '../context/PermissionsContext';
 import { RADIUS, SPACING } from '../constants/theme';
 import { registerDebugBridge } from '../services/api';
 
@@ -45,12 +46,12 @@ const DRAWER_W = Math.min(260, SCREEN_W * 0.72);
 const Tab   = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// ─── Menu items — Permissions removed (accessible via Settings) ───────────────
+// ─── Menu items con recursos de permisos ─────────────────────────────────────
 const MENU_ITEMS = [
-  { key: 'Recipes',       label: 'Recipes',       icon: 'restaurant-outline' as const, iconOn: 'restaurant'   as const },
-  { key: 'ShoppingLists', label: 'Shopping Lists', icon: 'list-outline'       as const, iconOn: 'list'         as const },
-  { key: 'Users',         label: 'Users',         icon: 'people-outline'     as const, iconOn: 'people'       as const, adminOnly: true },
-  { key: 'Settings',      label: 'Settings',      icon: 'settings-outline'   as const, iconOn: 'settings'     as const, adminOnly: true },
+  { key: 'Recipes',       label: 'Recipes',       icon: 'restaurant-outline' as const, iconOn: 'restaurant'   as const, resource: 'RECIPE_BOOK' },
+  { key: 'ShoppingLists', label: 'Shopping Lists', icon: 'list-outline'       as const, iconOn: 'list'         as const, resource: 'SHOPPING_LISTS' },
+  { key: 'Users',         label: 'Users',         icon: 'people-outline'     as const, iconOn: 'people'       as const, resource: 'USERS', adminOnly: true },
+  { key: 'Settings',      label: 'Settings',      icon: 'settings-outline'   as const, iconOn: 'settings'     as const, resource: 'SETTINGS', adminOnly: true },
 ];
 
 // ─── Slide menu ───────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ function SlideMenu({
 
   if (!mounted) return null;
 
+  // Filtrar items por permisos de admin y recursos
   const items = MENU_ITEMS.filter(m => !m.adminOnly || isSuperAdmin);
 
   const panelShadow = Platform.OS === 'web'
@@ -125,47 +127,102 @@ function SlideMenu({
           </View>
 
           <View style={{ marginTop: SPACING.md }}>
-            {items.map(item => {
-              const active = activeKey === item.key;
-              return (
-                <TouchableOpacity
-                  key={item.key}
-                  style={[
-                    styles.dItem,
-                    active
-                      ? { backgroundColor: colors.primaryDim, borderColor: `${colors.primary}44` }
-                      : { borderColor: 'transparent' },
-                  ]}
-                  onPress={() => { 
-                    onClose(); 
-                    // Prevent multiple rapid taps
-                    setTimeout(() => onNavigate(item.key), 200); 
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[
-                    styles.dItemIcon,
-                    { backgroundColor: active ? colors.primary : colors.surfaceElevated },
-                  ]}>
-                    <Ionicons
-                      name={active ? item.iconOn : item.icon}
-                      size={15}
-                      color={active ? colors.background : colors.textSecondary}
-                    />
-                  </View>
-                  <Text style={[styles.dItemText, { color: active ? colors.primary : colors.textPrimary }]}>
-                    {item.label}
-                  </Text>
-                  {active && (
-                    <View style={[styles.dItemBar, { backgroundColor: colors.primary }]} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+            <MenuItems 
+              items={items} 
+              activeKey={activeKey} 
+              onNavigate={onNavigate}
+              onClose={onClose}
+              colors={colors} 
+            />
           </View>
         </View>
       </Animated.View>
     </View>
+  );
+}
+
+// ─── Menu Items con permisos ──────────────────────────────────────────────────
+function MenuItems({ 
+  items, 
+  activeKey, 
+  onNavigate,
+  onClose, 
+  colors 
+}: { 
+  items: typeof MENU_ITEMS; 
+  activeKey: string; 
+  onNavigate: (screen: string) => void;
+  onClose: () => void; 
+  colors: any; 
+}) {
+  return (
+    <>
+      {items.map(item => (
+        <MenuItemWithPermissions
+          key={item.key}
+          item={item}
+          active={activeKey === item.key}
+          onNavigate={onNavigate}
+          onClose={onClose}
+          colors={colors}
+        />
+      ))}
+    </>
+  );
+}
+
+function MenuItemWithPermissions({ 
+  item, 
+  active, 
+  onNavigate,
+  onClose, 
+  colors 
+}: { 
+  item: typeof MENU_ITEMS[0]; 
+  active: boolean; 
+  onNavigate: (screen: string) => void;
+  onClose: () => void; 
+  colors: any; 
+}) {
+  const permissions = useResourcePermissions(item.resource);
+  
+  // Si no tiene permisos para ver el menú, no mostrar el item
+  if (!permissions.canInMenu) {
+    return null;
+  }
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.dItem,
+        active
+          ? { backgroundColor: colors.primaryDim, borderColor: `${colors.primary}44` }
+          : { borderColor: 'transparent' },
+      ]}
+      onPress={() => { 
+        onClose(); // Cerrar el menú primero
+        // Prevent multiple rapid taps
+        setTimeout(() => onNavigate(item.key), 200); 
+      }}
+      activeOpacity={0.7}
+    >
+      <View style={[
+        styles.dItemIcon,
+        { backgroundColor: active ? colors.primary : colors.surfaceElevated },
+      ]}>
+        <Ionicons
+          name={active ? item.iconOn : item.icon}
+          size={15}
+          color={active ? colors.background : colors.textSecondary}
+        />
+      </View>
+      <Text style={[styles.dItemText, { color: active ? colors.primary : colors.textPrimary }]}>
+        {item.label}
+      </Text>
+      {active && (
+        <View style={[styles.dItemBar, { backgroundColor: colors.primary }]} />
+      )}
+    </TouchableOpacity>
   );
 }
 

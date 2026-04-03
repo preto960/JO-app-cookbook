@@ -11,7 +11,8 @@ import { useToast } from '../../context/ToastContext';
 import { recipeService, resolvePublicMediaUrl } from '../../services/api';
 import { usePagination } from '../../hooks/usePagination';
 import { useApiCall } from '../../hooks/useApiCall';
-import { StatusBadge, EmptyState, SkeletonCard, SkeletonList, Pagination, ActionMenu, ModalSheet, RecipeToShoppingListModal } from '../../components';
+import { StatusBadge, EmptyState, SkeletonCard, SkeletonList, Pagination, ActionMenu, ModalSheet, RecipeToShoppingListModal, ProtectedRoute } from '../../components';
+import { useResourcePermissions } from '../../context/PermissionsContext';
 import SharedFilterBar from '../../components/SharedFilterBar';
 import { SPACING, RADIUS } from '../../constants/theme';
 import type { Recipe, RecipeCategory, ShoppingList } from '../../types/api.types';
@@ -30,6 +31,9 @@ interface Props { navigation: any }
 function RecipesScreenContent({ navigation }: Props) {
   const { colors } = useTheme();
   const toast      = useToast();
+  
+  // Permisos para recetas
+  const permissions = useResourcePermissions('RECIPE_BOOK');
 
   const [tab,        setTab]        = useState<Tab>('explore');
   const [search,     setSearch]     = useState('');
@@ -196,7 +200,7 @@ function RecipesScreenContent({ navigation }: Props) {
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search recipes…"
-        onAction={tab === 'mine' ? () => navigation.navigate('RecipeForm') : undefined}
+        onAction={tab === 'mine' && permissions.canCreate ? () => navigation.navigate('RecipeForm') : undefined}
         onFilter={() => {
           // Sync temp states with current filters
           setTempDifficulty(difficulty);
@@ -227,7 +231,7 @@ function RecipesScreenContent({ navigation }: Props) {
             )}
           </View>
 
-          {listData.length > 0 && (
+          {listData.length > 0 && permissions.canCreate && (
             <TouchableOpacity
               style={[styles.shoppingListBtn, { backgroundColor: colors.primaryDim, borderColor: colors.primary }]}
               onPress={handleCreateShoppingList}
@@ -269,11 +273,12 @@ function RecipesScreenContent({ navigation }: Props) {
                 recipe={recipe}
                 isLast={idx === listData.length - 1}
                 showEdit={tab === 'mine'}
+                permissions={permissions}
                 colors={colors}
                 onPress={() => navigation.navigate('RecipeDetail', { recipeId: recipe.id })}
-                onEdit={() => navigation.navigate('RecipeForm', { recipeId: recipe.id })}
-                onTogglePublish={() => handleTogglePublish(recipe)}
-                onDelete={() => handleDelete(recipe)}
+                onEdit={permissions.canEdit ? () => navigation.navigate('RecipeForm', { recipeId: recipe.id }) : undefined}
+                onTogglePublish={permissions.canEdit ? () => handleTogglePublish(recipe) : undefined}
+                onDelete={permissions.canDelete ? () => handleDelete(recipe) : undefined}
               />
             ))}
           </View>
@@ -380,11 +385,12 @@ function RecipesScreenContent({ navigation }: Props) {
 
 // ─── Recipe List Row (like user row) ─────────────────────────────────────────
 function RecipeListRow({
-  recipe, isLast, showEdit, colors, onPress, onEdit, onTogglePublish, onDelete,
+  recipe, isLast, showEdit, permissions, colors, onPress, onEdit, onTogglePublish, onDelete,
 }: {
   recipe: Recipe; isLast: boolean; showEdit: boolean;
-  colors: any; onPress: () => void; onEdit: () => void;
-  onTogglePublish: () => void; onDelete: () => void;
+  permissions: { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canInMenu: boolean; };
+  colors: any; onPress: () => void; onEdit?: () => void;
+  onTogglePublish?: () => void; onDelete?: () => void;
 }) {
   // Protección contra datos corruptos
   if (!recipe || !recipe.id) {
@@ -394,15 +400,22 @@ function RecipeListRow({
   const menuActions = [];
 
   if (showEdit) {
-    menuActions.push(
-      { label: 'Edit', icon: 'pencil-outline' as const, onPress: onEdit },
-      {
+    // Solo agregar acciones si tiene permisos y se proporcionó la función
+    if (permissions.canEdit && onEdit) {
+      menuActions.push({ label: 'Edit', icon: 'pencil-outline' as const, onPress: onEdit });
+    }
+    
+    if (permissions.canEdit && onTogglePublish) {
+      menuActions.push({
         label: recipe.isPublished ? 'Unpublish' : 'Publish',
         icon: recipe.isPublished ? 'eye-off-outline' as const : 'eye-outline' as const,
         onPress: onTogglePublish,
-      },
-      { label: 'Delete', icon: 'trash-outline' as const, danger: true, onPress: onDelete }
-    );
+      });
+    }
+    
+    if (permissions.canDelete && onDelete) {
+      menuActions.push({ label: 'Delete', icon: 'trash-outline' as const, danger: true, onPress: onDelete });
+    }
   }
 
   const thumbUri = resolvePublicMediaUrl(recipe.coverImage);
@@ -698,5 +711,9 @@ const styles = StyleSheet.create({
 });
 
 export default function RecipesScreen(props: Props) {
-  return <RecipesScreenContent {...props} />;
+  return (
+    <ProtectedRoute resource="RECIPE_BOOK" action="canView">
+      <RecipesScreenContent {...props} />
+    </ProtectedRoute>
+  );
 }

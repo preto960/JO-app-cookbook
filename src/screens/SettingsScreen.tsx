@@ -14,17 +14,22 @@ import { getSavedApiUrl, saveApiUrl, DEFAULT_API_URL } from '../services/api';
 
 import ThemedCard from '../components/ThemedCard';
 import SettingRow from '../components/SettingRow';
+import { ProtectedRoute } from '../components';
+import { useResourcePermissions } from '../context/PermissionsContext';
 
 interface Props {
   navigation?: any;
 }
 
-export default function SettingsScreen({ navigation }: Props) {
+function SettingsScreenContent({ navigation }: Props) {
   const { user, isSuperAdmin }                    = useAuth();
   const { colors }                                = useTheme();
   const toast                                     = useToast();
   const { maintenanceMode, emailNotifications,
           debugMode, rateLimiting, set, ready }   = useSettings();
+  
+  // Permisos para configuraciones
+  const permissions = useResourcePermissions('SETTINGS');
 
   useEffect(() => {
     registerToastBridge({ success: toast.success, error: toast.error, info: toast.info });
@@ -132,10 +137,10 @@ export default function SettingsScreen({ navigation }: Props) {
           description="Limit requests per IP"
           type="toggle"
           value={rateLimiting}
-          onToggle={async (v) => {
+          onToggle={permissions.canEdit ? async (v) => {
             await set('rateLimiting', v);
             toast.info(v ? 'Rate limiting enabled' : 'Rate limiting disabled');
-          }}
+          } : undefined}
         />
       </ThemedCard>
 
@@ -202,10 +207,10 @@ export default function SettingsScreen({ navigation }: Props) {
           description="Enable detailed server logs"
           type="toggle"
           value={debugMode}
-          onToggle={async (v) => {
+          onToggle={permissions.canEdit ? async (v) => {
             await set('debugMode', v);
             toast.info(v ? 'Debug mode enabled' : 'Debug mode disabled');
-          }}
+          } : undefined}
         />
       </ThemedCard>
 
@@ -216,23 +221,23 @@ export default function SettingsScreen({ navigation }: Props) {
           description="Block access for regular users"
           type="toggle"
           value={maintenanceMode}
-          onToggle={async (v) => {
+          onToggle={permissions.canEdit ? async (v) => {
             await set('maintenanceMode', v);
             toast.warning(
               v ? 'Maintenance enabled' : 'Maintenance disabled',
               v ? 'Regular users cannot access the app.' : 'The system is now available.',
             );
-          }}
+          } : undefined}
         />
         <SettingRow
           label="Email Notifications"
           description="Send automatic admin alerts"
           type="toggle"
           value={emailNotifications}
-          onToggle={async (v) => {
+          onToggle={permissions.canEdit ? async (v) => {
             await set('emailNotifications', v);
             toast.info(v ? 'Notifications enabled' : 'Notifications disabled');
-          }}
+          } : undefined}
         />
       </ThemedCard>
 
@@ -327,3 +332,11 @@ const styles = StyleSheet.create({
   urlBtn:      { flex: 1, height: 40, borderRadius: RADIUS.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   urlBtnText:  { fontSize: 14, fontWeight: '700' },
 });
+
+export default function SettingsScreen(props: Props) {
+  return (
+    <ProtectedRoute resource="SETTINGS" action="canView">
+      <SettingsScreenContent {...props} />
+    </ProtectedRoute>
+  );
+}
